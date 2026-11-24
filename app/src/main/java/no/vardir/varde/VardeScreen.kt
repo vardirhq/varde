@@ -54,6 +54,11 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 
 @Composable
 fun Varde(vm: Workspace = viewModel()) {
+    var selectedRepo by remember { mutableStateOf<Repo?>(null) }
+    selectedRepo?.let { repo ->
+        RepositoryWorkspace(vm, repo) { selectedRepo = null }
+        return
+    }
     val uri = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
@@ -119,7 +124,7 @@ fun Varde(vm: Workspace = viewModel()) {
                     items(includedWork.take(3), key = { it.url }) { entry -> AttentionCard(entry) { uri.openUri(entry.url) } }
                     item { SectionHeading("Your projects", "See all") { tab = Tab.Projects } }
                     if (includedRepos.isEmpty() && !vm.busy) item { InfoPanel("No visible repositories", "Choose repositories in Settings or refresh GitHub.") }
-                    items(dashboardRepositories(includedRepos), key = { it.id }) { repo -> RepoCard(repo) { uri.openUri(repo.url) } }
+                    items(dashboardRepositories(includedRepos), key = { it.id }) { repo -> RepoCard(repo) { selectedRepo = repo } }
                 }
                 Tab.Projects -> {
                     item { PageTitle("Your projects", "Repositories accessible on GitHub") }
@@ -139,7 +144,7 @@ fun Varde(vm: Workspace = viewModel()) {
                         Text("Archived", Modifier.clickable { showArchived = !showArchived })
                     } }
                     if (visible.isEmpty() && !vm.busy) item { InfoPanel("No matching repositories", "Try another search or filter.") }
-                    items(visible, key = { it.id }) { repo -> RepoCard(repo) { uri.openUri(repo.url) } }
+                    items(visible, key = { it.id }) { repo -> RepoCard(repo) { selectedRepo = repo } }
                 }
                 Tab.Inbox -> {
                     item { PageTitle("Inbox", "Open issues and pull requests assigned to you") }
@@ -253,7 +258,7 @@ fun Varde(vm: Workspace = viewModel()) {
             }
             Text(repo.owner + if (repo.archived) " · Archived" else "", color = Muted, style = MaterialTheme.typography.labelLarge)
             if (repo.description.isNotBlank()) Text(repo.description, color = Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 3)
-            Text("Open on GitHub  ›", color = Amber, style = MaterialTheme.typography.labelLarge)
+            Text("Open workspace  ›", color = Amber, style = MaterialTheme.typography.labelLarge)
         }
     }
 }
