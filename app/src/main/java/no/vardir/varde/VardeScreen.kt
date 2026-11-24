@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -151,6 +153,10 @@ fun Varde(vm: Workspace = viewModel()) {
                 Tab.Settings -> {
                     item { PageTitle("Settings", "Your GitHub connection") }
                     item { InfoPanel("Signed in as ${vm.user.ifBlank { "GitHub user" }}", "${includedRepos.size} visible · ${vm.excludedRepos.size} excluded") }
+                    item { Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = vm::refresh, enabled = !vm.busy, modifier = Modifier.fillMaxWidth()) { Text("Refresh GitHub data") }
+                        OutlinedButton(onClick = { vm.logout(); tab = Tab.Home; owner = null; query = "" }, modifier = Modifier.fillMaxWidth()) { Text("Sign out") }
+                    } }
                     item { SectionHeading("Repositories", "Clear search") { exclusionQuery = "" } }
                     item { Text("Excluded repositories and their assigned work are hidden in Varde. GitHub is unchanged.", Modifier.padding(horizontal = 20.dp), color = Muted, style = MaterialTheme.typography.bodyMedium) }
                     item { OutlinedTextField(exclusionQuery, { exclusionQuery = it }, label = { Text("Find a repository") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) }
@@ -163,13 +169,9 @@ fun Varde(vm: Workspace = viewModel()) {
                             }
                             val included = repo.id !in vm.excludedRepos
                             Text(if (included) "Included" else "Excluded", color = Muted, style = MaterialTheme.typography.labelMedium)
-                            Switch(checked = included, onCheckedChange = { vm.setExcluded(repo.id, !it) })
+                            Switch(checked = included, onCheckedChange = { vm.setExcluded(repo.id, !it) }, modifier = Modifier.semantics { contentDescription = "Include ${repo.owner}/${repo.name}" })
                         }
                     }
-                    item { Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = vm::refresh, enabled = !vm.busy, modifier = Modifier.fillMaxWidth()) { Text("Refresh GitHub data") }
-                        OutlinedButton(onClick = { vm.logout(); tab = Tab.Home; owner = null; query = "" }, modifier = Modifier.fillMaxWidth()) { Text("Sign out") }
-                    } }
                 }
             }
         }
