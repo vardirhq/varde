@@ -19,8 +19,8 @@ import java.util.Date
 private data class WorkspaceLink(val title: String, val subtitle: String, val route: String)
 
 @Composable
-internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, onBack: () -> Unit) {
-    var page by remember(repo.id) { mutableStateOf("overview") }
+internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String = "overview", onBack: () -> Unit) {
+    var page by remember(repo.id) { mutableStateOf(initialPage) }
     var payload by remember { mutableStateOf<CachedResponse?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
