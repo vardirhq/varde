@@ -32,6 +32,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     private val store = TokenStore(application)
     private val exclusionPrefs = application.getSharedPreferences("repository_exclusions", android.content.Context.MODE_PRIVATE)
     private val github = GitHub(BuildConfig.GH_CLIENT_ID)
+    private val appContext = application.applicationContext
     private var token = store.load()
     private var job: Job? = null
     var signedIn by mutableStateOf(token != null); private set
@@ -89,6 +90,11 @@ class Workspace(application: Application) : AndroidViewModel(application) {
         if (user.isBlank()) return
         excludedRepos = if (excluded) excludedRepos + repoId else excludedRepos - repoId
         exclusionPrefs.edit().putStringSet(user.lowercase(java.util.Locale.ROOT), excludedRepos.map { it.toString() }.toSet()).apply()
+    }
+    internal suspend fun workspaceLoad(path: String): CachedResponse {
+        val access = token ?: throw IllegalStateException("Sign in to load GitHub data.")
+        if (user.isBlank()) throw IllegalStateException("Your account is not loaded yet. Refresh and try again.")
+        return WorkspaceData(appContext, github, user, access).load(path)
     }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
