@@ -78,7 +78,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
             if (page.startsWith("log:")) {
                 item { Text(response.body, style = MaterialTheme.typography.bodySmall) }
             } else {
-                val links = remember(page, response.body) { runCatching { workspaceLinks(page, response.body) }.getOrDefault(emptyList()) }
+                val links = runCatching { workspaceLinks(page, response.body) }.getOrDefault(emptyList())
                 if (page == "overview") item {
                     if (repo.description.isNotBlank()) Text(repo.description, style = MaterialTheme.typography.bodyLarge)
                 }
