@@ -38,6 +38,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     private var token = store.load()
     private var job: Job? = null
     private var feedJob: Job? = null
+    private var feedGeneration = 0
     var signedIn by mutableStateOf(token != null); private set
     var snapshotTime by mutableStateOf<Long?>(null); private set
     var user by mutableStateOf(""); private set
@@ -113,6 +114,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     }
     private fun startAttentionFeed() {
         feedJob?.cancel()
+        val generation = ++feedGeneration
         val access = token ?: return
         val account = user
         if (account.isBlank()) return
@@ -127,7 +129,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
                 feedIncomplete = result.incomplete
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { feedIncomplete = true }
-            finally { feedLoading = false }
+            finally { if (generation == feedGeneration) feedLoading = false }
         }
     }
     private fun organizationKey(): String = user.lowercase(java.util.Locale.ROOT)
@@ -164,6 +166,6 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
-    private fun reset() { feedJob?.cancel(); feedItems = emptyList(); feedIncomplete = false; feedLoading = false; store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); attention = emptyList(); attentionLoaded = false; attentionError = null }
+    private fun reset() { feedGeneration++; feedJob?.cancel(); feedItems = emptyList(); feedIncomplete = false; feedLoading = false; store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); attention = emptyList(); attentionLoaded = false; attentionError = null }
     fun logout() { job?.cancel(); snapshot.clearLastUser(); reset(); snapshotTime = null; error = null }
 }
