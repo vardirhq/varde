@@ -60,7 +60,13 @@ fun Varde(vm: Workspace = viewModel()) {
     var owner by rememberSaveable { mutableStateOf<String?>(null) }
     var showArchived by rememberSaveable { mutableStateOf(false) }
     var ownersOpen by remember { mutableStateOf(false) }
-    val visible = filterRepositories(vm.repos, query, owner, showArchived)
+    var exclusionQuery by rememberSaveable { mutableStateOf("") }
+    val includedRepos = includedRepositories(vm.repos, vm.excludedRepos)
+    val includedWork = includedAttention(vm.attention, vm.excludedRepos)
+    val visible = filterRepositories(includedRepos, query, owner, showArchived)
+    val manageableRepos = vm.repos.filter {
+        it.name.contains(exclusionQuery, true) || it.owner.contains(exclusionQuery, true)
+    }
     Scaffold(
         containerColor = Ink,
         bottomBar = {
@@ -107,11 +113,11 @@ fun Varde(vm: Workspace = viewModel()) {
                     if (vm.attentionError != null) item { InfoPanel("Couldn't load assigned work", vm.attentionError!!) }
                     else if (!vm.attentionLoaded && vm.busy) item { InfoPanel("Loading assigned work", "Checking GitHub for open issues and pull requests assigned to you.") }
                     else if (!vm.attentionLoaded) item { InfoPanel("Assigned work not loaded", "Refresh to check GitHub for assigned work.") }
-                    else if (vm.attention.isEmpty()) item { InfoPanel("No assigned work", "Open issues and pull requests assigned to you will appear here.") }
-                    items(vm.attention.take(3), key = { it.url }) { entry -> AttentionCard(entry) { uri.openUri(entry.url) } }
+                    else if (includedWork.isEmpty()) item { InfoPanel("No assigned work", "Open issues and pull requests assigned to you will appear here.") }
+                    items(includedWork.take(3), key = { it.url }) { entry -> AttentionCard(entry) { uri.openUri(entry.url) } }
                     item { SectionHeading("Your projects", "See all") { tab = Tab.Projects } }
-                    if (vm.repos.isEmpty() && !vm.busy) item { InfoPanel("No repositories yet", "Refresh to check GitHub again.") }
-                    items(dashboardRepositories(vm.repos), key = { it.id }) { repo -> RepoCard(repo) { uri.openUri(repo.url) } }
+                    if (includedRepos.isEmpty() && !vm.busy) item { InfoPanel("No visible repositories", "Choose repositories in Settings or refresh GitHub.") }
+                    items(dashboardRepositories(includedRepos), key = { it.id }) { repo -> RepoCard(repo) { uri.openUri(repo.url) } }
                 }
                 Tab.Projects -> {
                     item { PageTitle("Your projects", "Repositories accessible on GitHub") }
@@ -121,7 +127,7 @@ fun Varde(vm: Workspace = viewModel()) {
                         Box { OutlinedButton(onClick = { ownersOpen = true }) { Text(owner ?: "All owners") }
                             DropdownMenu(expanded = ownersOpen, onDismissRequest = { ownersOpen = false }) {
                                 DropdownMenuItem(text = { Text("All owners") }, onClick = { owner = null; ownersOpen = false })
-                                vm.repos.map { it.owner }.distinct().sorted().forEach { name ->
+                                includedRepos.map { it.owner }.distinct().sorted().forEach { name ->
                                     DropdownMenuItem(text = { Text(name) }, onClick = { owner = name; ownersOpen = false })
                                 }
                             }
@@ -139,12 +145,27 @@ fun Varde(vm: Workspace = viewModel()) {
                     if (vm.attentionError != null) item { InfoPanel("Couldn't load assigned work", vm.attentionError!!) }
                     else if (!vm.attentionLoaded && vm.busy) item { InfoPanel("Loading", "Checking GitHub for assigned work.") }
                     else if (!vm.attentionLoaded) item { InfoPanel("Assigned work not loaded", "Refresh to check GitHub for assigned work.") }
-                    else if (vm.attention.isEmpty()) item { InfoPanel("Nothing assigned", "Your assigned issues and pull requests will appear here.") }
-                    items(vm.attention, key = { it.url }) { entry -> AttentionCard(entry) { uri.openUri(entry.url) } }
+                    else if (includedWork.isEmpty()) item { InfoPanel("Nothing assigned", "Your assigned issues and pull requests will appear here.") }
+                    items(includedWork, key = { it.url }) { entry -> AttentionCard(entry) { uri.openUri(entry.url) } }
                 }
                 Tab.Settings -> {
                     item { PageTitle("Settings", "Your GitHub connection") }
-                    item { InfoPanel("Signed in as ${vm.user.ifBlank { "GitHub user" }}", "${vm.repos.size} accessible repositories") }
+                    item { InfoPanel("Signed in as ${vm.user.ifBlank { "GitHub user" }}", "${includedRepos.size} visible · ${vm.excludedRepos.size} excluded") }
+                    item { SectionHeading("Repositories", "Clear search") { exclusionQuery = "" } }
+                    item { Text("Excluded repositories and their assigned work are hidden in Varde. GitHub is unchanged.", Modifier.padding(horizontal = 20.dp), color = Muted, style = MaterialTheme.typography.bodyMedium) }
+                    item { OutlinedTextField(exclusionQuery, { exclusionQuery = it }, label = { Text("Find a repository") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) }
+                    if (manageableRepos.isEmpty()) item { InfoPanel("No matching repositories", "Try another search or refresh GitHub.") }
+                    items(manageableRepos, key = { it.id }) { repo ->
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(repo.name, style = MaterialTheme.typography.titleMedium)
+                                Text(repo.owner, color = Muted, style = MaterialTheme.typography.bodySmall)
+                            }
+                            val included = repo.id !in vm.excludedRepos
+                            Text(if (included) "Included" else "Excluded", color = Muted, style = MaterialTheme.typography.labelMedium)
+                            Switch(checked = included, onCheckedChange = { vm.setExcluded(repo.id, !it) })
+                        }
+                    }
                     item { Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = vm::refresh, enabled = !vm.busy, modifier = Modifier.fillMaxWidth()) { Text("Refresh GitHub data") }
                         OutlinedButton(onClick = { vm.logout(); tab = Tab.Home; owner = null; query = "" }, modifier = Modifier.fillMaxWidth()) { Text("Sign out") }
