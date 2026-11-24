@@ -58,7 +58,7 @@ class GitHub(private val clientId: String) {
         .header("Accept","application/vnd.github+json").header("X-GitHub-Api-Version","2022-11-28").build())
     internal suspend fun jobLog(path: String, token: String): String = withContext(Dispatchers.IO) {
         // OkHttp strips the Authorization header when GitHub redirects to a different host.
-        val client = http.newBuilder().followRedirects(true).followSslRedirects(true).build()
+        val client = http.newBuilder().followRedirects(true).followSslRedirects(false).build()
         val req = Request.Builder().url("https://api.github.com/$path")
             .header("Authorization", "Bearer $token").build()
         client.newCall(req).execute().use { response ->
