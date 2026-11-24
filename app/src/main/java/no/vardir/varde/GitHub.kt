@@ -64,6 +64,7 @@ class GitHub(private val clientId: String) {
             AttentionItem(
                 title = item.getString("title"),
                 repository = item.getJSONObject("repository").getString("full_name"),
+                repositoryId = item.getJSONObject("repository").getLong("id"),
                 kind = if (item.has("pull_request")) "Pull request" else "Issue",
                 url = item.getString("html_url")
             )
