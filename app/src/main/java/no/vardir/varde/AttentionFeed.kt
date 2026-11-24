@@ -34,6 +34,7 @@ internal suspend fun loadAttentionFeed(repos: List<Repo>, user: String, load: su
     for (repo in repos) {
         try {
             val data = JSONObject(load(repoApi(repo) + "/actions/runs?per_page=30"))
+            if (data.optInt("total_count") > 30) incomplete = true
             val runs = data.optJSONArray("workflow_runs") ?: JSONArray()
             val seen = mutableSetOf<Long>()
             for (i in 0 until runs.length()) {
