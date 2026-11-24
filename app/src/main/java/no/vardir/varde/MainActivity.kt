@@ -37,6 +37,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     private val organization = appContext.getSharedPreferences("project_organization", android.content.Context.MODE_PRIVATE)
     private var token = store.load()
     private var job: Job? = null
+    private var feedJob: Job? = null
     var signedIn by mutableStateOf(token != null); private set
     var snapshotTime by mutableStateOf<Long?>(null); private set
     var user by mutableStateOf(""); private set
@@ -45,6 +46,9 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     var pinnedRepos by mutableStateOf<Set<Long>>(emptySet()); private set
     var repoGroups by mutableStateOf<Map<Long, String>>(emptyMap()); private set
     var attention by mutableStateOf(emptyList<AttentionItem>()); private set
+    var feedItems by mutableStateOf(emptyList<AttentionItem>()); private set
+    var feedLoading by mutableStateOf(false); private set
+    var feedIncomplete by mutableStateOf(false); private set
     var attentionLoaded by mutableStateOf(false); private set
     var attentionError by mutableStateOf<String?>(null); private set
     var code by mutableStateOf<String?>(null); private set
@@ -105,6 +109,26 @@ class Workspace(application: Application) : AndroidViewModel(application) {
             attentionLoaded = false
             attentionError = "Check your connection and refresh. Assigned work may require additional GitHub permissions."
         }
+        startAttentionFeed()
+    }
+    private fun startAttentionFeed() {
+        feedJob?.cancel()
+        val access = token ?: return
+        val account = user
+        if (account.isBlank()) return
+        val selected = repos.filterNot { it.id in excludedRepos }
+        feedLoading = true
+        feedItems = emptyList()
+        feedIncomplete = false
+        feedJob = viewModelScope.launch {
+            try {
+                val result = loadAttentionFeed(selected, account) { github.get(it, access) }
+                feedItems = result.items
+                feedIncomplete = result.incomplete
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { feedIncomplete = true }
+            finally { feedLoading = false }
+        }
     }
     private fun organizationKey(): String = user.lowercase(java.util.Locale.ROOT)
     private fun loadOrganization() {
@@ -131,6 +155,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
         if (user.isBlank()) return
         excludedRepos = if (excluded) excludedRepos + repoId else excludedRepos - repoId
         exclusionPrefs.edit().putStringSet(user.lowercase(java.util.Locale.ROOT), excludedRepos.map { it.toString() }.toSet()).apply()
+        startAttentionFeed()
     }
     internal suspend fun workspaceLoad(path: String): CachedResponse {
         val access = token ?: throw IllegalStateException("Sign in to load GitHub data.")
@@ -139,6 +164,6 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
-    private fun reset() { store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); attention = emptyList(); attentionLoaded = false; attentionError = null }
+    private fun reset() { feedJob?.cancel(); feedItems = emptyList(); feedIncomplete = false; feedLoading = false; store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); attention = emptyList(); attentionLoaded = false; attentionError = null }
     fun logout() { job?.cancel(); snapshot.clearLastUser(); reset(); snapshotTime = null; error = null }
 }
