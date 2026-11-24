@@ -29,13 +29,19 @@ class GitHub(private val clientId: String) {
         val data = post("device/code", mapOf("client_id" to clientId, "scope" to if (privateAccess) "repo read:org" else "read:org"))
         return DeviceCode(data.getString("device_code"), data.getString("user_code"), data.optLong("interval",5).coerceAtLeast(5), data.getLong("expires_in"))
     }
-    suspend fun authorize(code: DeviceCode): String {
+    suspend fun authorize(code: DeviceCode, onConnectionProblem: () -> Unit = {}, onReconnected: () -> Unit = {}): String {
         var interval = code.interval
         val deadline = SystemClock.elapsedRealtime() + code.expires * 1000
         while (SystemClock.elapsedRealtime() < deadline) {
             delay(interval * 1000)
             if (SystemClock.elapsedRealtime() >= deadline) break
-            val data = post("oauth/access_token", mapOf("client_id" to clientId,"device_code" to code.code,"grant_type" to "urn:ietf:params:oauth:grant-type:device_code"))
+            val data = try {
+                retryNetworkUntil(deadline, interval * 1000, SystemClock::elapsedRealtime, { delay(it) }, onConnectionProblem) {
+                    post("oauth/access_token", mapOf("client_id" to clientId,"device_code" to code.code,"grant_type" to "urn:ietf:params:oauth:grant-type:device_code"))
+                }.also { onReconnected() }
+            } catch (e: java.io.IOException) {
+                throw java.io.IOException("Couldn't reach GitHub before the code expired. Check your connection and try again.", e)
+            }
             when (data.optString("error")) {
                 "authorization_pending" -> continue
                 "slow_down" -> { interval += 5; continue }
