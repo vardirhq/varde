@@ -195,11 +195,10 @@ fun Varde(vm: Workspace = viewModel()) {
 @Composable private fun Hero(user: String) {
     val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
     val greeting = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" }
-    Box(Modifier.fillMaxWidth().heightIn(min = 145.dp).background(Brush.verticalGradient(listOf(Ink, Color(0xFF2C2928), Ink)))) {
-        Canvas(Modifier.matchParentSize()) {
-            val path = Path().apply { moveTo(0f, size.height * .82f); lineTo(size.width * .2f, size.height * .55f); lineTo(size.width * .45f, size.height * .82f); lineTo(size.width * .72f, size.height * .47f); lineTo(size.width, size.height * .69f); lineTo(size.width, size.height); lineTo(0f, size.height); close() }
-            drawPath(path, Color(0xFF151C24))
-        }
+    val today = remember { Calendar.getInstance() }
+    val seed = today.get(Calendar.YEAR).toLong() * 1000 + today.get(Calendar.DAY_OF_YEAR)
+    Box(Modifier.fillMaxWidth().heightIn(min = 145.dp)) {
+        LandscapeBanner(seed = seed, night = hour < 7 || hour >= 19, modifier = Modifier.matchParentSize())
         Column(Modifier.padding(horizontal = 20.dp, vertical = 24.dp)) {
             Text(if (user.isBlank()) greeting else "$greeting, $user", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text("Your development workspace", color = Muted, style = MaterialTheme.typography.bodyLarge)
