@@ -53,7 +53,7 @@ class GitHub(private val clientId: String) {
         }
         error("Code expired. Try again.")
     }
-    private suspend fun get(path: String, token: String): String = request(Request.Builder()
+    internal suspend fun get(path: String, token: String): String = request(Request.Builder()
         .url("https://api.github.com/$path").header("Authorization","Bearer $token")
         .header("Accept","application/vnd.github+json").header("X-GitHub-Api-Version","2022-11-28").build())
     suspend fun login(token: String): String = JSONObject(get("user",token)).getString("login")
