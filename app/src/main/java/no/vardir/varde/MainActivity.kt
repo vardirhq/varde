@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) { Varde() } }
+        setContent { VardeTheme { Varde() } }
     }
 }
 class Workspace(application: Application) : AndroidViewModel(application) {
@@ -36,6 +36,9 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     var signedIn by mutableStateOf(token != null); private set
     var user by mutableStateOf(""); private set
     var repos by mutableStateOf(emptyList<Repo>()); private set
+    var attention by mutableStateOf(emptyList<AttentionItem>()); private set
+    var attentionLoaded by mutableStateOf(false); private set
+    var attentionError by mutableStateOf<String?>(null); private set
     var code by mutableStateOf<String?>(null); private set
     var busy by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
@@ -64,60 +67,22 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     private suspend fun sync(access: String) {
         user = github.login(access)
         repos = github.repositories(access)
+        try {
+            attention = github.assignedWork(access)
+            attentionLoaded = true
+            attentionError = null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Unauthorized) {
+            throw e
+        } catch (e: Exception) {
+            attention = emptyList()
+            attentionLoaded = false
+            attentionError = "Check your connection and refresh. Assigned work may require additional GitHub permissions."
+        }
     }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
-    private fun reset() { store.clear(); token = null; signedIn = false; user = ""; repos = emptyList() }
+    private fun reset() { store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); attention = emptyList(); attentionLoaded = false; attentionError = null }
     fun logout() { job?.cancel(); reset(); error = null }
-}
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun Varde(vm: Workspace = viewModel()) {
-    val uri = LocalUriHandler.current
-    val clipboard = LocalClipboardManager.current
-    var privateAccess by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
-    var owner by remember { mutableStateOf<String?>(null) }
-    var showArchived by remember { mutableStateOf(false) }
-    var ownersOpen by remember { mutableStateOf(false) }
-    val visible = vm.repos.filter { (owner == null || it.owner == owner) && (showArchived || !it.archived) && (it.name.contains(query,true) || it.owner.contains(query,true)) }
-    Scaffold(topBar = { TopAppBar(title = { Text("Varde") }, actions = {
-        if (vm.signedIn) { TextButton(onClick = vm::refresh, enabled = !vm.busy) { Text("Refresh") }; TextButton(onClick = { vm.logout(); owner = null; query = "" }) { Text("Sign out") } }
-    }) }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 16.dp)) {
-            if (vm.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            vm.error?.let { message -> item { Text(message,color = MaterialTheme.colorScheme.error) } }
-            if (!vm.signedIn) {
-                item { Text("Your development workspace",style = MaterialTheme.typography.headlineLarge) }
-                item { Text("Manage your GitHub portfolio from anywhere.") }
-                item { Row { Checkbox(privateAccess,{ privateAccess = it },enabled = !vm.busy); Text("Include private repositories (grants broad repo access)",Modifier.padding(top = 12.dp)) } }
-                item { Button(onClick = { vm.signIn(privateAccess) },enabled = !vm.busy) { Text("Sign in with GitHub") } }
-                vm.code?.let { code -> item {
-                    Text("Enter this code on GitHub",style = MaterialTheme.typography.titleMedium)
-                    Text(code,style = MaterialTheme.typography.headlineLarge)
-                    OutlinedButton(onClick = { clipboard.setText(AnnotatedString(code)) }) { Text("Copy code") }
-                    Button(onClick = { uri.openUri("https://github.com/login/device") }) { Text("Open GitHub") }
-                } }
-                if (vm.busy) item { TextButton(onClick = vm::cancel) { Text("Cancel") } }
-            } else {
-                item { Text("Your workspace",style = MaterialTheme.typography.headlineLarge); Text(vm.user) }
-                item { ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(20.dp)) { Text("${vm.repos.size}",style = MaterialTheme.typography.displaySmall); Text("Accessible repositories") } } }
-                item { OutlinedTextField(query,{ query = it },label = { Text("Search repositories") },singleLine = true,modifier = Modifier.fillMaxWidth()) }
-                item { Row { Box { OutlinedButton(onClick = { ownersOpen = true }) { Text(owner ?: "All owners") }; DropdownMenu(ownersOpen,{ ownersOpen = false }) {
-                    DropdownMenuItem(text = { Text("All owners") },onClick = { owner = null; ownersOpen = false })
-                    vm.repos.map { it.owner }.distinct().sorted().forEach { name -> DropdownMenuItem(text = { Text(name) },onClick = { owner = name; ownersOpen = false }) }
-                } }; Checkbox(showArchived,{ showArchived = it }); Text("Archived",Modifier.padding(top = 12.dp)) } }
-                if (visible.isEmpty() && !vm.busy) item { Text("No matching repositories.") }
-                items(visible,key = { it.id }) { repo ->
-                    OutlinedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp),verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(repo.name,style = MaterialTheme.typography.titleLarge)
-                        Text(repo.owner + if (repo.privateRepo) " · Private" else " · Public")
-                        if (repo.archived) Text("Archived")
-                        if (repo.description.isNotBlank()) Text(repo.description)
-                        TextButton(onClick = { uri.openUri(repo.url) }) { Text("Open on GitHub") }
-                    } }
-                }
-            }
-        }
-    }
 }
