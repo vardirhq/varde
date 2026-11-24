@@ -129,7 +129,7 @@ fun Varde(vm: Workspace = viewModel()) {
                     item { Hero(vm.user) }
                     item { SectionHeading("Needs attention", "See all") { tab = Tab.Inbox } }
                     if (vm.feedLoading) item { Text("Checking repositories for attention…", Modifier.padding(horizontal = 20.dp), color = Muted, style = MaterialTheme.typography.bodySmall) }
-                    if (vm.feedIncomplete) item { Text("Some attention data could not be loaded. Refresh to retry.", Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    if (vm.feedIncomplete) item { Text("Some attention data may be missing due to permissions, rate limits, or result limits.", Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     if (vm.attentionError != null) item { InfoPanel("Couldn't load assigned work", vm.attentionError!!) }
                     else if (!vm.attentionLoaded && vm.busy) item { InfoPanel("Loading assigned work", "Checking GitHub for open issues and pull requests assigned to you.") }
                     else if (!vm.attentionLoaded) item { InfoPanel("Assigned work not loaded", "Refresh to check GitHub for assigned work.") }
@@ -183,7 +183,7 @@ fun Varde(vm: Workspace = viewModel()) {
                     item { PageTitle("Inbox", "Open issues and pull requests assigned to you") }
                     item { Text("GitHub data is refreshed when the app refreshes.", Modifier.padding(horizontal = 20.dp), color = Muted, style = MaterialTheme.typography.bodySmall) }
                     if (vm.feedLoading) item { Text("Checking repositories for attention…", Modifier.padding(horizontal = 20.dp), color = Muted, style = MaterialTheme.typography.bodySmall) }
-                    if (vm.feedIncomplete) item { Text("Some attention data could not be loaded. Refresh to retry.", Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    if (vm.feedIncomplete) item { Text("Some attention data may be missing due to permissions, rate limits, or result limits.", Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     if (vm.attentionError != null) item { InfoPanel("Couldn't load assigned work", vm.attentionError!!) }
                     else if (!vm.attentionLoaded && vm.busy) item { InfoPanel("Loading", "Checking GitHub for assigned work.") }
                     else if (!vm.attentionLoaded) item { InfoPanel("Assigned work not loaded", "Refresh to check GitHub for assigned work.") }
