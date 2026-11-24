@@ -36,6 +36,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         page.startsWith("files:") -> "$base/contents/" + page.removePrefix("files:").split('/').joinToString("/") { pathPart(it) }
         page.startsWith("pull:") -> "$base/pulls/" + page.removePrefix("pull:")
         page.startsWith("changes:") -> "$base/pulls/" + page.removePrefix("changes:") + "/files?per_page=100"
+        page.startsWith("reviewcomments:") -> "$base/pulls/" + page.removePrefix("reviewcomments:") + "/comments?per_page=100"
         page.startsWith("comments:") -> "$base/issues/" + page.removePrefix("comments:") + "/comments?per_page=100"
         page.startsWith("checks:") -> "$base/commits/" + pathPart(page.removePrefix("checks:")) + "/check-runs?per_page=100"
         page.startsWith("statuses:") -> "$base/commits/" + pathPart(page.removePrefix("statuses:")) + "/status"
@@ -53,7 +54,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
     fun back() {
         page = when {
             page == "overview" -> { onBack(); return }
-            page.startsWith("changes:") || page.startsWith("comments:") -> "pull:" + page.substringAfter(':')
+            page.startsWith("changes:") || page.startsWith("comments:") || page.startsWith("reviewcomments:") -> "pull:" + page.substringAfter(':')
             page.startsWith("statuses:") || page.startsWith("checks:") -> "pulls"
             page.startsWith("pull:") -> "pulls"
             page.startsWith("log:") -> "runs"
@@ -101,11 +102,16 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
 }
 
 private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
-    if (page == "overview") return listOf(
+    if (page == "overview") {
+        val details = JSONObject(body)
+        return listOf(
+        WorkspaceLink("Repository details", "Default branch: ${jsonText(details, "default_branch", "unknown")} · ${details.optInt("open_issues_count")} open issues and PRs", ""),
+
         WorkspaceLink("Commits", "Recent changes", "commits"), WorkspaceLink("Issues", "Open issues", "issues"),
         WorkspaceLink("Pull requests", "Review changes and checks", "pulls"), WorkspaceLink("Workflows", "Runs, jobs and logs", "runs"),
         WorkspaceLink("Files", "Browse repository files", "files:")
-    )
+        )
+    }
     val parsed = org.json.JSONTokener(body).nextValue()
     if (page.startsWith("pull:") && parsed is JSONObject) {
         val number = page.substringAfter(':')
@@ -114,6 +120,7 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
             WorkspaceLink(jsonText(parsed, "title"), jsonText(parsed, "body", "No description"), ""),
             WorkspaceLink("Changed files", "View patches", "changes:$number"),
             WorkspaceLink("Comments", "Read conversation", "comments:$number"),
+            WorkspaceLink("Review comments", "Read comments on changed lines", "reviewcomments:$number"),
             WorkspaceLink("Checks", "View GitHub check runs", "checks:$sha"),
             WorkspaceLink("Commit status", "View reported statuses for the head commit", "statuses:$sha")
         )
@@ -151,7 +158,7 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
             page.startsWith("run:") -> WorkspaceLink(jsonText(o, "name", "Job"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}", "log:${o.optLong("id")}")
             page.startsWith("files:") -> WorkspaceLink(jsonText(o, "name"), jsonText(o, "type"), "files:${jsonText(o, "path")}")
             page.startsWith("changes:") -> WorkspaceLink(jsonText(o, "filename"), jsonText(o, "patch", "Patch unavailable"), jsonText(o, "blob_url"))
-            page.startsWith("comments:") -> WorkspaceLink(o.optJSONObject("user")?.optString("login").orEmpty(), jsonText(o, "body"), jsonText(o, "html_url"))
+            page.startsWith("comments:") || page.startsWith("reviewcomments:") -> WorkspaceLink(o.optJSONObject("user")?.optString("login").orEmpty(), jsonText(o, "body"), jsonText(o, "html_url"))
             else -> null
         }
     }
