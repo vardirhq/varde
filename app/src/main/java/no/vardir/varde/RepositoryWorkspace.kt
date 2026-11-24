@@ -131,7 +131,8 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
         val content = jsonText(parsed, "content").replace("\n", "")
         if (content.isBlank()) return listOf(WorkspaceLink(jsonText(parsed, "name", "File"), "This file cannot be displayed here.", jsonText(parsed, "html_url")))
         val decoded = try { String(Base64.decode(content, Base64.DEFAULT), Charsets.UTF_8) } catch (_: Exception) { "Unable to decode file." }
-        return listOf(WorkspaceLink(jsonText(parsed, "name"), decoded.take(100_000), jsonText(parsed, "html_url")))
+        val display = if (decoded.contains('\u0000')) "Binary file; open on GitHub." else decoded.take(100_000) + if (decoded.length > 100_000) "\n\n[File truncated]" else ""
+        return listOf(WorkspaceLink(jsonText(parsed, "name"), display, jsonText(parsed, "html_url")))
     }
     if (page.startsWith("checks:") && parsed is JSONObject) {
         val checks = parsed.optJSONArray("check_runs") ?: JSONArray()
