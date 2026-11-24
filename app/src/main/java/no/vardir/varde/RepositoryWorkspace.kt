@@ -80,11 +80,13 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
             if (page.startsWith("log:")) {
                 item { Text(response.body, style = MaterialTheme.typography.bodySmall) }
             } else {
-                val links = runCatching { workspaceLinks(page, response.body) }.getOrDefault(emptyList())
+                val result = runCatching { workspaceLinks(page, response.body) }
+                val links = result.getOrDefault(emptyList())
+                if (result.isFailure) item { Text("Could not read the GitHub response.", color = MaterialTheme.colorScheme.error) }
                 if (page == "overview") item {
                     if (repo.description.isNotBlank()) Text(repo.description, style = MaterialTheme.typography.bodyLarge)
                 }
-                if (links.isEmpty()) item { Text("Nothing to show.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (links.isEmpty() && result.isSuccess) item { Text("Nothing to show.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 items(links) { link ->
                     OutlinedCard(onClick = {
                         if (link.route.startsWith("https://github.com/")) uri.openUri(link.route)
