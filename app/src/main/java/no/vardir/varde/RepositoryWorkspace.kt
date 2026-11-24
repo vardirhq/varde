@@ -37,6 +37,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         page.startsWith("pull:") -> "$base/pulls/" + page.removePrefix("pull:")
         page.startsWith("changes:") -> "$base/pulls/" + page.removePrefix("changes:") + "/files?per_page=100"
         page.startsWith("comments:") -> "$base/issues/" + page.removePrefix("comments:") + "/comments?per_page=100"
+        page.startsWith("checks:") -> "$base/commits/" + pathPart(page.removePrefix("checks:")) + "/check-runs?per_page=100"
         page.startsWith("statuses:") -> "$base/commits/" + pathPart(page.removePrefix("statuses:")) + "/status"
         page.startsWith("run:") -> "$base/actions/runs/" + page.removePrefix("run:") + "/jobs?per_page=100"
         page.startsWith("log:") -> "$base/actions/jobs/" + page.removePrefix("log:") + "/logs"
@@ -53,7 +54,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         page = when {
             page == "overview" -> { onBack(); return }
             page.startsWith("changes:") || page.startsWith("comments:") -> "pull:" + page.substringAfter(':')
-            page.startsWith("statuses:") -> "pulls"
+            page.startsWith("statuses:") || page.startsWith("checks:") -> "pulls"
             page.startsWith("pull:") -> "pulls"
             page.startsWith("log:") -> "runs"
             page.startsWith("run:") -> "runs"
@@ -113,6 +114,7 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
             WorkspaceLink(jsonText(parsed, "title"), jsonText(parsed, "body", "No description"), ""),
             WorkspaceLink("Changed files", "View patches", "changes:$number"),
             WorkspaceLink("Comments", "Read conversation", "comments:$number"),
+            WorkspaceLink("Checks", "View GitHub check runs", "checks:$sha"),
             WorkspaceLink("Commit status", "View reported statuses for the head commit", "statuses:$sha")
         )
     }
@@ -121,6 +123,13 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
         if (content.isBlank()) return listOf(WorkspaceLink(jsonText(parsed, "name", "File"), "This file cannot be displayed here.", jsonText(parsed, "html_url")))
         val decoded = try { String(Base64.decode(content, Base64.DEFAULT), Charsets.UTF_8) } catch (_: Exception) { "Unable to decode file." }
         return listOf(WorkspaceLink(jsonText(parsed, "name"), decoded.take(100_000), jsonText(parsed, "html_url")))
+    }
+    if (page.startsWith("checks:") && parsed is JSONObject) {
+        val checks = parsed.optJSONArray("check_runs") ?: JSONArray()
+        return (0 until checks.length()).map { i ->
+            val o = checks.getJSONObject(i)
+            WorkspaceLink(jsonText(o, "name"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}", jsonText(o, "html_url"))
+        }.ifEmpty { listOf(WorkspaceLink("No check runs", "No check runs were returned for this commit.", "")) }
     }
     if (page.startsWith("statuses:") && parsed is JSONObject) {
         val statuses = parsed.optJSONArray("statuses") ?: JSONArray()
