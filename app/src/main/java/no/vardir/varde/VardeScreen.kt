@@ -134,7 +134,7 @@ fun Varde(vm: Workspace = viewModel()) {
                     else if (!vm.attentionLoaded && vm.busy) item { InfoPanel("Loading assigned work", "Checking GitHub for open issues and pull requests assigned to you.") }
                     else if (!vm.attentionLoaded) item { InfoPanel("Assigned work not loaded", "Refresh to check GitHub for assigned work.") }
                     else if (includedWork.isEmpty() && !vm.feedLoading && !vm.feedIncomplete) item { InfoPanel("No assigned work", "Review requests, failed checks, workflows, and assigned work will appear here.") }
-                    items(includedWork.take(3), key = { it.url }) { entry -> AttentionCard(entry) {
+                    items(includedWork.take(3), key = { "${it.kind}:${it.url}" }) { entry -> AttentionCard(entry) {
                         val target = includedRepos.firstOrNull { it.id == entry.repositoryId }
                         val id = entry.url.substringAfterLast('/')
                         val route = when {
@@ -188,7 +188,7 @@ fun Varde(vm: Workspace = viewModel()) {
                     else if (!vm.attentionLoaded && vm.busy) item { InfoPanel("Loading", "Checking GitHub for assigned work.") }
                     else if (!vm.attentionLoaded) item { InfoPanel("Assigned work not loaded", "Refresh to check GitHub for assigned work.") }
                     else if (includedWork.isEmpty() && !vm.feedLoading && !vm.feedIncomplete) item { InfoPanel("Nothing assigned", "Your assigned issues and pull requests will appear here.") }
-                    items(includedWork, key = { it.url }) { entry -> AttentionCard(entry) {
+                    items(includedWork, key = { "${it.kind}:${it.url}" }) { entry -> AttentionCard(entry) {
                         val target = includedRepos.firstOrNull { it.id == entry.repositoryId }
                         val id = entry.url.substringAfterLast('/')
                         val route = when {
