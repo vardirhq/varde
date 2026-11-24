@@ -30,12 +30,14 @@ class MainActivity : ComponentActivity() {
 }
 class Workspace(application: Application) : AndroidViewModel(application) {
     private val store = TokenStore(application)
+    private val exclusionPrefs = application.getSharedPreferences("repository_exclusions", android.content.Context.MODE_PRIVATE)
     private val github = GitHub(BuildConfig.GH_CLIENT_ID)
     private var token = store.load()
     private var job: Job? = null
     var signedIn by mutableStateOf(token != null); private set
     var user by mutableStateOf(""); private set
     var repos by mutableStateOf(emptyList<Repo>()); private set
+    var excludedRepos by mutableStateOf<Set<Long>>(emptySet()); private set
     var attention by mutableStateOf(emptyList<AttentionItem>()); private set
     var attentionLoaded by mutableStateOf(false); private set
     var attentionError by mutableStateOf<String?>(null); private set
@@ -66,6 +68,8 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     }
     private suspend fun sync(access: String) {
         user = github.login(access)
+        excludedRepos = exclusionPrefs.getStringSet(user.lowercase(java.util.Locale.ROOT), emptySet())
+            .orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
         repos = github.repositories(access)
         try {
             attention = github.assignedWork(access)
@@ -81,8 +85,13 @@ class Workspace(application: Application) : AndroidViewModel(application) {
             attentionError = "Check your connection and refresh. Assigned work may require additional GitHub permissions."
         }
     }
+    fun setExcluded(repoId: Long, excluded: Boolean) {
+        if (user.isBlank()) return
+        excludedRepos = if (excluded) excludedRepos + repoId else excludedRepos - repoId
+        exclusionPrefs.edit().putStringSet(user.lowercase(java.util.Locale.ROOT), excludedRepos.map { it.toString() }.toSet()).apply()
+    }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
-    private fun reset() { store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); attention = emptyList(); attentionLoaded = false; attentionError = null }
+    private fun reset() { store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); attention = emptyList(); attentionLoaded = false; attentionError = null }
     fun logout() { job?.cancel(); reset(); error = null }
 }

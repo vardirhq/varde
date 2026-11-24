@@ -17,4 +17,15 @@ class DashboardTest {
         assertEquals(listOf(1L), filterRepositories(repos, "eng", "Vardir", false).map { it.id })
         assertEquals(listOf(1L, 2L), filterRepositories(repos, "VARDIR", "Vardir", true).map { it.id })
     }
+    @Test fun excludedRepositoriesAreRemovedFromProjectsAndAssignedWork() {
+        val repos = listOf(repo(1, "hidden", "one"), repo(2, "visible", "one"))
+        val work = listOf(
+            AttentionItem("Hidden issue", "one/hidden", "Issue", "https://github.com/one/hidden/issues/1", 1L),
+            AttentionItem("Visible issue", "one/visible", "Issue", "https://github.com/one/visible/issues/1", 2L)
+        )
+        assertEquals(listOf(2L), includedRepositories(repos, setOf(1L)).map { it.id })
+        assertEquals(listOf("Visible issue"), includedAttention(work, setOf(1L)).map { it.title })
+        assertEquals(2, includedRepositories(repos, emptySet()).size)
+        assertEquals(2, includedAttention(work, emptySet()).size)
+    }
 }
