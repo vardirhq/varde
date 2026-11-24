@@ -33,9 +33,11 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     private val exclusionPrefs = application.getSharedPreferences("repository_exclusions", android.content.Context.MODE_PRIVATE)
     private val github = GitHub(BuildConfig.GH_CLIENT_ID)
     private val appContext = application.applicationContext
+    private val snapshot = RepoSnapshot(appContext)
     private var token = store.load()
     private var job: Job? = null
     var signedIn by mutableStateOf(token != null); private set
+    var snapshotTime by mutableStateOf<Long?>(null); private set
     var user by mutableStateOf(""); private set
     var repos by mutableStateOf(emptyList<Repo>()); private set
     var excludedRepos by mutableStateOf<Set<Long>>(emptySet()); private set
@@ -45,7 +47,18 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     var code by mutableStateOf<String?>(null); private set
     var busy by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
-    init { if (signedIn) refresh() }
+    init {
+        if (signedIn) {
+            val previousUser = snapshot.lastUser()
+            if (previousUser.isNotBlank()) {
+                user = previousUser
+                excludedRepos = exclusionPrefs.getStringSet(user.lowercase(java.util.Locale.ROOT), emptySet())
+                    .orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+                snapshot.load(user)?.let { (cached, time) -> repos = cached; snapshotTime = time }
+            }
+            refresh()
+        }
+    }
     private fun runTask(block: suspend () -> Unit) {
         if (busy) return
         busy = true; error = null
@@ -72,6 +85,8 @@ class Workspace(application: Application) : AndroidViewModel(application) {
         excludedRepos = exclusionPrefs.getStringSet(user.lowercase(java.util.Locale.ROOT), emptySet())
             .orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
         repos = github.repositories(access)
+        snapshot.save(user, repos)
+        snapshotTime = null
         try {
             attention = github.assignedWork(access)
             attentionLoaded = true
@@ -99,5 +114,5 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
     private fun reset() { store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); attention = emptyList(); attentionLoaded = false; attentionError = null }
-    fun logout() { job?.cancel(); reset(); error = null }
+    fun logout() { job?.cancel(); snapshot.clearLastUser(); reset(); snapshotTime = null; error = null }
 }
