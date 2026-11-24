@@ -12,6 +12,7 @@ internal class WorkspaceData(private val context: Context, private val github: G
     private val prefs = context.getSharedPreferences("workspace_cache", Context.MODE_PRIVATE)
     private fun key(path: String) = user.lowercase(java.util.Locale.ROOT) + ":" + path
     suspend fun load(path: String): CachedResponse {
+        if (path.endsWith("/logs")) return CachedResponse(github.jobLog(path, token), false, System.currentTimeMillis())
         val key = key(path)
         return try {
             val body = github.get(path, token)
