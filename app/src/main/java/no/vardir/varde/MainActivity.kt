@@ -166,6 +166,6 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
-    private fun reset() { feedGeneration++; feedJob?.cancel(); feedItems = emptyList(); feedIncomplete = false; feedLoading = false; store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); attention = emptyList(); attentionLoaded = false; attentionError = null }
-    fun logout() { job?.cancel(); snapshot.clearLastUser(); reset(); snapshotTime = null; error = null }
+    private fun reset() { snapshot.clearLastUser(); snapshotTime = null; feedGeneration++; feedJob?.cancel(); feedItems = emptyList(); feedIncomplete = false; feedLoading = false; store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); attention = emptyList(); attentionLoaded = false; attentionError = null }
+    fun logout() { job?.cancel(); reset(); error = null }
 }
