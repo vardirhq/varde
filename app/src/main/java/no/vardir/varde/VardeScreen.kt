@@ -14,7 +14,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -106,6 +106,7 @@ fun Varde(vm: Workspace = viewModel()) {
                     item { SectionHeading("Needs attention", "See all") { tab = Tab.Inbox } }
                     if (vm.attentionError != null) item { InfoPanel("Couldn't load assigned work", vm.attentionError!!) }
                     else if (!vm.attentionLoaded && vm.busy) item { InfoPanel("Loading assigned work", "Checking GitHub for open issues and pull requests assigned to you.") }
+                    else if (!vm.attentionLoaded) item { InfoPanel("Assigned work not loaded", "Refresh to check GitHub for assigned work.") }
                     else if (vm.attention.isEmpty()) item { InfoPanel("No assigned work", "Open issues and pull requests assigned to you will appear here.") }
                     items(vm.attention.take(3), key = { it.url }) { entry -> AttentionCard(entry) { uri.openUri(entry.url) } }
                     item { SectionHeading("Your projects", "See all") { tab = Tab.Projects } }
@@ -137,6 +138,7 @@ fun Varde(vm: Workspace = viewModel()) {
                     item { Text("Showing up to 100 assigned items from GitHub.", Modifier.padding(horizontal = 20.dp), color = Muted, style = MaterialTheme.typography.bodySmall) }
                     if (vm.attentionError != null) item { InfoPanel("Couldn't load assigned work", vm.attentionError!!) }
                     else if (!vm.attentionLoaded && vm.busy) item { InfoPanel("Loading", "Checking GitHub for assigned work.") }
+                    else if (!vm.attentionLoaded) item { InfoPanel("Assigned work not loaded", "Refresh to check GitHub for assigned work.") }
                     else if (vm.attention.isEmpty()) item { InfoPanel("Nothing assigned", "Your assigned issues and pull requests will appear here.") }
                     items(vm.attention, key = { it.url }) { entry -> AttentionCard(entry) { uri.openUri(entry.url) } }
                 }
