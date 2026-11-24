@@ -34,6 +34,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     private val github = GitHub(BuildConfig.GH_CLIENT_ID)
     private val appContext = application.applicationContext
     private val snapshot = RepoSnapshot(appContext)
+    private val organization = appContext.getSharedPreferences("project_organization", android.content.Context.MODE_PRIVATE)
     private var token = store.load()
     private var job: Job? = null
     var signedIn by mutableStateOf(token != null); private set
@@ -41,6 +42,8 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     var user by mutableStateOf(""); private set
     var repos by mutableStateOf(emptyList<Repo>()); private set
     var excludedRepos by mutableStateOf<Set<Long>>(emptySet()); private set
+    var pinnedRepos by mutableStateOf<Set<Long>>(emptySet()); private set
+    var repoGroups by mutableStateOf<Map<Long, String>>(emptyMap()); private set
     var attention by mutableStateOf(emptyList<AttentionItem>()); private set
     var attentionLoaded by mutableStateOf(false); private set
     var attentionError by mutableStateOf<String?>(null); private set
@@ -52,6 +55,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
             val previousUser = snapshot.lastUser()
             if (previousUser.isNotBlank()) {
                 user = previousUser
+                loadOrganization()
                 excludedRepos = exclusionPrefs.getStringSet(user.lowercase(java.util.Locale.ROOT), emptySet())
                     .orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
                 snapshot.load(user)?.let { (cached, time) -> repos = cached; snapshotTime = time }
@@ -82,6 +86,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     }
     private suspend fun sync(access: String) {
         user = github.login(access)
+        loadOrganization()
         excludedRepos = exclusionPrefs.getStringSet(user.lowercase(java.util.Locale.ROOT), emptySet())
             .orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
         repos = github.repositories(access)
@@ -101,6 +106,27 @@ class Workspace(application: Application) : AndroidViewModel(application) {
             attentionError = "Check your connection and refresh. Assigned work may require additional GitHub permissions."
         }
     }
+    private fun organizationKey(): String = user.lowercase(java.util.Locale.ROOT)
+    private fun loadOrganization() {
+        if (user.isBlank()) return
+        val key = organizationKey()
+        pinnedRepos = organization.getStringSet("$key:pins", emptySet()).orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+        val json = try { org.json.JSONObject(organization.getString("$key:groups", "{}") ?: "{}") } catch (_: Exception) { org.json.JSONObject() }
+        repoGroups = json.keys().asSequence().mapNotNull { k -> k.toLongOrNull()?.let { it to json.optString(k) } }.toMap()
+    }
+    fun togglePin(repoId: Long) {
+        if (user.isBlank()) return
+        pinnedRepos = if (repoId in pinnedRepos) pinnedRepos - repoId else pinnedRepos + repoId
+        organization.edit().putStringSet("${organizationKey()}:pins", pinnedRepos.map { it.toString() }.toSet()).apply()
+    }
+    fun setGroup(repoId: Long, group: String) {
+        if (user.isBlank()) return
+        val name = group.trim().take(80)
+        repoGroups = if (name.isEmpty()) repoGroups - repoId else repoGroups + (repoId to name)
+        val json = org.json.JSONObject()
+        repoGroups.forEach { (id, value) -> json.put(id.toString(), value) }
+        organization.edit().putString("${organizationKey()}:groups", json.toString()).apply()
+    }
     fun setExcluded(repoId: Long, excluded: Boolean) {
         if (user.isBlank()) return
         excludedRepos = if (excluded) excludedRepos + repoId else excludedRepos - repoId
@@ -113,6 +139,6 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
-    private fun reset() { store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); attention = emptyList(); attentionLoaded = false; attentionError = null }
+    private fun reset() { store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); attention = emptyList(); attentionLoaded = false; attentionError = null }
     fun logout() { job?.cancel(); snapshot.clearLastUser(); reset(); snapshotTime = null; error = null }
 }
