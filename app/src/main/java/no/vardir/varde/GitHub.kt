@@ -57,6 +57,18 @@ class GitHub(private val clientId: String) {
         .url("https://api.github.com/$path").header("Authorization","Bearer $token")
         .header("Accept","application/vnd.github+json").header("X-GitHub-Api-Version","2022-11-28").build())
     suspend fun login(token: String): String = JSONObject(get("user",token)).getString("login")
+    suspend fun assignedWork(token: String): List<AttentionItem> {
+        val data = JSONArray(get("issues?filter=assigned&state=open&per_page=100", token))
+        return (0 until data.length()).map { index ->
+            val item = data.getJSONObject(index)
+            AttentionItem(
+                title = item.getString("title"),
+                repository = item.getJSONObject("repository").getString("full_name"),
+                kind = if (item.has("pull_request")) "Pull request" else "Issue",
+                url = item.getString("html_url")
+            )
+        }
+    }
     suspend fun repositories(token: String): List<Repo> {
         val result = mutableListOf<Repo>()
         var page = 1
