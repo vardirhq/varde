@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -25,7 +27,7 @@ android {
         doLast {
             val output = stableDebugKeystore.get().asFile
             output.parentFile.mkdirs()
-            output.writeBytes(java.util.Base64.getMimeDecoder().decode(encoded.asFile.readText()))
+            output.writeBytes(Base64.getMimeDecoder().decode(encoded.asFile.readText()))
         }
     }
     signingConfigs {
