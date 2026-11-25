@@ -18,22 +18,6 @@ import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 
 @Composable
-internal fun PullSummary(body: String) {
-    val pr = remember(body) { runCatching { JSONObject(body) }.getOrNull() } ?: return
-    val head = pr.optJSONObject("head")?.optString("ref").orEmpty()
-    val base = pr.optJSONObject("base")?.optString("ref").orEmpty()
-    val state = pullState(jsonText(pr, "state"), pr.optBoolean("draft"), pr.optBoolean("merged"))
-    VardeCard {
-        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            StatusBadge(state)
-            Text("$head → $base", style = MaterialTheme.typography.bodyMedium)
-            Text("${pr.optInt("changed_files")} files · +${pr.optInt("additions")} / −${pr.optInt("deletions")}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
 internal fun DiffCard(title: String, patch: String, comments: List<String>, onOpen: (() -> Unit)?) {
     var expanded by remember(title, patch) { mutableStateOf(false) }
     val diff = VardeTheme.colors

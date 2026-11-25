@@ -137,7 +137,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
             contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            if (page.startsWith("pull:") || page.startsWith("log:") || page.startsWith("run:") || page.startsWith("changes:")) item {
+            if (page.startsWith("log:") || page.startsWith("run:") || page.startsWith("changes:")) item {
                 OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare agent handover") }
             }
             if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
@@ -152,6 +152,14 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
                 }
                 if (page.startsWith("log:")) {
                     item { JobLogPanel(response.body) }
+                } else if (page.startsWith("pull:")) {
+                    val pr = runCatching { parsePullRequest(response.body) }.getOrNull()
+                    if (pr == null) item { Notice("Couldn't read this pull request", "The GitHub response could not be displayed.", NoticeKind.Error) }
+                    else item(key = "pull:${pr.number}") {
+                        PullRequestPage(vm, repo, pr, response.cached, onNavigate = { navigate(it) },
+                            onAction = { writeKind = it }, onHandover = { showHandover = true },
+                            onOpenUrl = { runCatching { uri.openUri(it) } })
+                    }
                 } else {
                     val result = runCatching { workspaceLinks(page, response.body) }
                     val links = result.getOrDefault(emptyList())
@@ -165,22 +173,11 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
                     if (links.isEmpty() && result.isSuccess) item {
                         Notice("Nothing here yet", "There is nothing to show in this view.")
                     }
-                    if ((page.startsWith("pull:") || page.startsWith("issue:")) && !response.cached) item {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { writeKind = WriteKind.COMMENT }, modifier = Modifier.fillMaxWidth()) { Text("Add comment") }
-                            if (page.startsWith("pull:") && runCatching { JSONObject(response.body).optString("state") == "open" }.getOrDefault(false)) {
-                                OutlinedButton(onClick = { writeKind = WriteKind.APPROVE }, modifier = Modifier.fillMaxWidth()) { Text("Approve") }
-                                OutlinedButton(onClick = { writeKind = WriteKind.REQUEST_CHANGES }, modifier = Modifier.fillMaxWidth()) { Text("Request changes") }
-                                Button(onClick = { writeKind = WriteKind.MERGE }, modifier = Modifier.fillMaxWidth()) { Text("Merge…") }
-                            }
-                        }
+                    if (page.startsWith("issue:") && !response.cached) item {
+                        OutlinedButton(onClick = { writeKind = WriteKind.COMMENT }, modifier = Modifier.fillMaxWidth()) { Text("Add comment") }
                     }
-                    if ((page.startsWith("pull:") || page.startsWith("issue:")) && response.cached) item {
+                    if (page.startsWith("issue:") && response.cached) item {
                         Notice("Actions unavailable offline", "Reconnect and refresh before submitting GitHub actions.")
-                    }
-                    if (page.startsWith("pull:")) {
-                        item { PullSummary(response.body) }
-                        item { PullChecks(vm, repo, response.body) { navigate(it) } }
                     }
                     if (page.startsWith("run:") && hasFailedJobs(response.body)) item {
                         OutlinedButton(onClick = { confirmRerun = true }, enabled = !rerunning,
@@ -278,18 +275,6 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
         return listOf(
             WorkspaceLink(jsonText(parsed, "title"), jsonText(parsed, "body", "No description"), ""),
             WorkspaceLink("Comments", "Read conversation", "issuecomments:$number")
-        )
-    }
-    if (page.startsWith("pull:") && parsed is JSONObject) {
-        val number = page.substringAfter(':')
-        val sha = parsed.optJSONObject("head")?.optString("sha").orEmpty()
-        return listOf(
-            WorkspaceLink(jsonText(parsed, "title"), jsonText(parsed, "body", "No description"), ""),
-            WorkspaceLink("Changed files", "View patches", "changes:$number"),
-            WorkspaceLink("Comments", "Read conversation", "comments:$number"),
-            WorkspaceLink("Review comments", "Read comments on changed lines", "reviewcomments:$number"),
-            WorkspaceLink("Checks", "View GitHub check runs", "checks:$sha"),
-            WorkspaceLink("Commit status", "View reported statuses for the head commit", "statuses:$sha")
         )
     }
     if (page.startsWith("files:") && parsed is JSONObject) {
