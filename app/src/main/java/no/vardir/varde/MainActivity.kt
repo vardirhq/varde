@@ -35,6 +35,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     private val appContext = application.applicationContext
     private val snapshot = RepoSnapshot(appContext)
     private val organization = appContext.getSharedPreferences("project_organization", android.content.Context.MODE_PRIVATE)
+    private val portfolioPrefs = appContext.getSharedPreferences("portfolio", android.content.Context.MODE_PRIVATE)
     private var token = store.load()
     private var job: Job? = null
     private var feedJob: Job? = null
@@ -46,6 +47,8 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     var excludedRepos by mutableStateOf<Set<Long>>(emptySet()); private set
     var pinnedRepos by mutableStateOf<Set<Long>>(emptySet()); private set
     var repoGroups by mutableStateOf<Map<Long, String>>(emptyMap()); private set
+    internal var products by mutableStateOf(emptyList<Product>()); private set
+    internal var portfolioError by mutableStateOf<String?>(null); private set
     var attention by mutableStateOf(emptyList<AttentionItem>()); private set
     var feedItems by mutableStateOf(emptyList<AttentionItem>()); private set
     var feedLoading by mutableStateOf(false); private set
@@ -61,6 +64,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
             if (previousUser.isNotBlank()) {
                 user = previousUser
                 loadOrganization()
+                loadPortfolio()
                 excludedRepos = exclusionPrefs.getStringSet(user.lowercase(java.util.Locale.ROOT), emptySet())
                     .orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
                 snapshot.load(user)?.let { (cached, time) -> repos = cached; snapshotTime = time }
@@ -92,6 +96,7 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     private suspend fun sync(access: String) {
         user = github.login(access)
         loadOrganization()
+        loadPortfolio()
         excludedRepos = exclusionPrefs.getStringSet(user.lowercase(java.util.Locale.ROOT), emptySet())
             .orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
         repos = github.repositories(access)
@@ -140,6 +145,33 @@ class Workspace(application: Application) : AndroidViewModel(application) {
         val json = try { org.json.JSONObject(organization.getString("$key:groups", "{}") ?: "{}") } catch (_: Exception) { org.json.JSONObject() }
         repoGroups = json.keys().asSequence().mapNotNull { k -> k.toLongOrNull()?.let { it to json.optString(k) } }.toMap()
     }
+    private fun loadPortfolio() {
+        if (user.isBlank()) return
+        val raw = portfolioPrefs.getString(organizationKey(), null)
+        try {
+            products = if (raw == null) emptyList() else decodeProducts(raw)
+            portfolioError = null
+        } catch (_: Exception) {
+            products = emptyList()
+            portfolioError = "Your saved portfolio could not be read. It has not been changed."
+        }
+    }
+    private fun persistProducts(updated: List<Product>): Boolean {
+        if (user.isBlank() || portfolioError != null) return false
+        if (!portfolioPrefs.edit().putString(organizationKey(), encodeProducts(updated)).commit()) {
+            portfolioError = "Couldn't save the portfolio. Your previous data has been kept."
+            return false
+        }
+        products = updated
+        return true
+    }
+    internal fun saveProduct(product: Product): Boolean {
+        if (product.name.isBlank()) return false
+        val sanitized = product.copy(name = product.name.trim().take(100))
+        val existing = products.any { it.id == sanitized.id }
+        return persistProducts(if (existing) products.map { if (it.id == sanitized.id) sanitized else it } else products + sanitized)
+    }
+    internal fun deleteProduct(id: String): Boolean = persistProducts(products.filterNot { it.id == id })
     fun togglePin(repoId: Long) {
         if (user.isBlank()) return
         pinnedRepos = if (repoId in pinnedRepos) pinnedRepos - repoId else pinnedRepos + repoId
@@ -174,6 +206,6 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
-    private fun reset() { snapshot.clearLastUser(); snapshotTime = null; feedGeneration++; feedJob?.cancel(); feedItems = emptyList(); feedIncomplete = false; feedLoading = false; store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); attention = emptyList(); attentionLoaded = false; attentionError = null }
+    private fun reset() { snapshot.clearLastUser(); snapshotTime = null; feedGeneration++; feedJob?.cancel(); feedItems = emptyList(); feedIncomplete = false; feedLoading = false; store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); products = emptyList(); portfolioError = null; attention = emptyList(); attentionLoaded = false; attentionError = null }
     fun logout() { job?.cancel(); reset(); error = null }
 }
