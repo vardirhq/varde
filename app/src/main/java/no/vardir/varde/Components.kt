@@ -118,7 +118,7 @@ internal fun SectionHeader(title: String, modifier: Modifier = Modifier, action:
     }
 }
 
-internal enum class NoticeKind { Info, Warning, Error }
+internal enum class NoticeKind { Info, Success, Warning, Error }
 
 /** Inline message: empty states, offline copies, partial data and errors. */
 @Composable
@@ -126,6 +126,7 @@ internal fun Notice(title: String, message: String? = null, kind: NoticeKind = N
     val colors = VardeTheme.colors
     val (container, accent, icon) = when (kind) {
         NoticeKind.Info -> Triple(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurfaceVariant, Icons.Default.Info)
+        NoticeKind.Success -> Triple(colors.successContainer, colors.success, Icons.Default.CheckCircle)
         NoticeKind.Warning -> Triple(colors.pendingContainer, colors.pending, Icons.Default.Warning)
         NoticeKind.Error -> Triple(colors.dangerContainer, colors.danger, Icons.Default.Warning)
     }

@@ -36,7 +36,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
     var writeKind by remember { mutableStateOf<WriteKind?>(null) }
     var writeMessage by remember { mutableStateOf<String?>(null) }
     var rerunning by remember { mutableStateOf(false) }
-    var rerunMessage by remember { mutableStateOf<String?>(null) }
+    var rerunResult by remember { mutableStateOf<Pair<NoticeKind, String>?>(null) }
     var diffComments by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var diffCommentWarning by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -112,9 +112,9 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
                 rerunning = true
                 try {
                     vm.rerunFailedJobs(repo, runId)
-                    rerunMessage = "GitHub accepted the rerun. Refresh to see the new attempt."
+                    rerunResult = NoticeKind.Success to "GitHub accepted the rerun. Refresh to see the new attempt."
                 } catch (e: CancellationException) { throw e }
-                catch (e: Exception) { rerunMessage = e.message ?: "Rerun failed." }
+                catch (e: Exception) { rerunResult = NoticeKind.Error to (e.message ?: "Rerun failed.") }
                 finally { rerunning = false }
             }
         }) { Text("Rerun failed jobs") } },
@@ -137,12 +137,11 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
             contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            if (page.startsWith("log:") || page.startsWith("run:") || page.startsWith("changes:")) item {
+            if (page.startsWith("log:") || page.startsWith("changes:")) item {
                 OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare agent handover") }
             }
             if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            rerunMessage?.let { message -> item { Notice("Workflow rerun", message) } }
-            writeMessage?.let { message -> item { Notice("GitHub action", message) } }
+            writeMessage?.let { message -> item { Notice("GitHub action", message, NoticeKind.Success) } }
             error?.let { message -> item {
                 Notice("Couldn't load this view", message, NoticeKind.Error)
             } }
@@ -179,10 +178,6 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
                     if (page.startsWith("issue:") && response.cached) item {
                         Notice("Actions unavailable offline", "Reconnect and refresh before submitting GitHub actions.")
                     }
-                    if (page.startsWith("run:") && hasFailedJobs(response.body)) item {
-                        OutlinedButton(onClick = { confirmRerun = true }, enabled = !rerunning,
-                            modifier = Modifier.fillMaxWidth()) { Text(if (rerunning) "Requesting rerun…" else "Rerun failed jobs") }
-                    }
                     diffCommentWarning?.let { message -> item { Notice("Review comments", message) } }
                     items(links) { link ->
                         val canOpen = link.route.isNotBlank()
@@ -209,6 +204,18 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
                                 }
                             })
                         }
+                    }
+                    // Run page: jobs first, then what you can do about them, with the result next to the button.
+                    if (page.startsWith("run:")) {
+                        item { SectionHeader("Act") }
+                        if (hasFailedJobs(response.body)) item {
+                            Button(onClick = { confirmRerun = true }, enabled = !rerunning && !response.cached,
+                                modifier = Modifier.fillMaxWidth()) { Text(if (rerunning) "Requesting rerun…" else "Rerun failed jobs") }
+                        }
+                        rerunResult?.let { (kind, message) -> item {
+                            Notice(if (kind == NoticeKind.Error) "Rerun not started" else "Rerun requested", message, kind)
+                        } }
+                        item { OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare agent handover") } }
                     }
                 }
             }

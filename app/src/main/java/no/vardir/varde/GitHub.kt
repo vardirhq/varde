@@ -101,7 +101,7 @@ class GitHub(private val clientId: String) {
             .post(RequestBody.create(null, ByteArray(0))).build()
         http.newCall(request).execute().use { response ->
             if (response.code == 401) throw Unauthorized()
-            check(response.isSuccessful) { "GitHub could not rerun failed jobs (HTTP ${response.code}). Check Actions permissions and run status." }
+            check(response.isSuccessful) { rerunFailureMessage(response.code, response.body?.string().orEmpty()) }
         }
     }
     internal suspend fun jobLog(path: String, token: String): String = withContext(Dispatchers.IO) {
