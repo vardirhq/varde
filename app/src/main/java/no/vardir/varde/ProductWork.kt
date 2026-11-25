@@ -1,7 +1,8 @@
 package no.vardir.varde
 
-import android.net.Uri
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,14 +19,20 @@ internal fun validWorkLink(value: String): Boolean {
 }
 
 @Composable
-internal fun ProductWork(vm: Workspace, product: Product) {
+internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
     var editing by remember { mutableStateOf<WorkItem?>(null) }
     var deleting by remember { mutableStateOf<WorkItem?>(null) }
+    var creatingIssue by remember { mutableStateOf<WorkItem?>(null) }
     val uriHandler = LocalUriHandler.current
     fun update(item: WorkItem) {
         val items = if (product.work.any { it.id == item.id }) product.work.map { if (it.id == item.id) item else it }
             else product.work + item
         vm.saveProduct(product.copy(work = items))
+    }
+    creatingIssue?.let { item ->
+        ProductIssueDialog(vm, item, repos, onClose = { creatingIssue = null }, onCreated = { url ->
+            vm.saveProduct(product.copy(work = product.work.map { if (it.id == item.id) it.copy(url = url, kind = "Task") else it }))
+        })
     }
     editing?.let { item ->
         WorkEditor(item, onCancel = { editing = null }, onSave = { update(it); editing = null })
@@ -57,6 +64,9 @@ internal fun ProductWork(vm: Workspace, product: Product) {
                         }
                     }
                     if (item.details.isNotBlank()) Text(item.details, style = MaterialTheme.typography.bodyMedium)
+                    if (item.url.isBlank() && repos.isNotEmpty()) TextButton(onClick = { creatingIssue = item }) {
+                        Text("Create GitHub issue…")
+                    }
                     if (item.url.isNotBlank() && validWorkLink(item.url)) TextButton(onClick = { runCatching { uriHandler.openUri(item.url.trim()) } }) { Text("Open linked GitHub item") }
                     Row {
                         TextButton(onClick = {
@@ -87,7 +97,7 @@ private fun WorkEditor(item: WorkItem, onCancel: () -> Unit, onSave: (WorkItem) 
     var menu by remember { mutableStateOf(false) }
     AlertDialog(onDismissRequest = onCancel, title = { Text(if (item.title.isBlank()) "Add work" else "Edit work") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(title, { title = it }, label = { Text("Title") }, singleLine = true)
                 Box {
                     OutlinedButton(onClick = { menu = true }) { Text("$kind ▾") }
