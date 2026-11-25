@@ -4,8 +4,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import android.os.SystemClock
@@ -85,12 +83,7 @@ class GitHub(private val clientId: String) {
         }
     }
     internal suspend fun createIssue(repo: Repo, title: String, body: String, token: String): String = withContext(Dispatchers.IO) {
-        require(title.isNotBlank())
-        val payload = JSONObject().put("title", title).put("body", body).toString()
-        val request = Request.Builder().url("https://api.github.com/" + repoApi(repo) + "/issues")
-            .header("Authorization", "Bearer $token").header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+        val request = buildCreateIssueRequest(repo, title, body, token)
         try {
             http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) error("GitHub rejected issue creation (HTTP ${response.code}). Check access and permissions.")
