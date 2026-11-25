@@ -35,6 +35,8 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
     var confirmRerun by remember { mutableStateOf(false) }
     var rerunning by remember { mutableStateOf(false) }
     var rerunMessage by remember { mutableStateOf<String?>(null) }
+    var diffComments by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    var diffCommentWarning by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     fun navigate(next: String) { history.add(page); page = next; rerunMessage = null }
     val uri = LocalUriHandler.current
@@ -62,6 +64,26 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         catch (e: CancellationException) { throw e }
         catch (e: Exception) { error = e.message ?: "Unable to load this view." }
         finally { loading = false }
+    }
+    LaunchedEffect(repo.id, page, generation) {
+        diffComments = emptyMap()
+        diffCommentWarning = null
+        if (page.startsWith("changes:")) {
+            try {
+                val response = vm.workspaceLoad(base + "/pulls/" + page.substringAfter(':') + "/comments?per_page=100")
+                val comments = JSONArray(response.body)
+                diffComments = (0 until comments.length()).mapNotNull { comments.optJSONObject(it) }
+                    .groupBy { jsonText(it, "path") }
+                    .mapValues { (_, entries) -> entries.map {
+                        val author = it.optJSONObject("user")?.optString("login").orEmpty()
+                        val line = if (it.isNull("line")) "outdated line" else "line " + it.optInt("line")
+                        "$author · $line\n" + jsonText(it, "body")
+                    } }
+                if (response.cached || comments.length() == 100) diffCommentWarning =
+                    "Review comments may be cached or incomplete. Open GitHub for the full conversation."
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { diffCommentWarning = "Review comments couldn't be loaded." }
+        }
     }
     fun back() {
         if (history.isNotEmpty()) { page = history.removeAt(history.lastIndex); return }
@@ -160,6 +182,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                         OutlinedButton(onClick = { confirmRerun = true }, enabled = !rerunning,
                             modifier = Modifier.fillMaxWidth()) { Text(if (rerunning) "Requesting rerun…" else "Rerun failed jobs") }
                     }
+                    diffCommentWarning?.let { message -> item { WorkspaceNotice("Review comments", message) } }
                     items(links) { link ->
                         val canOpen = link.route.isNotBlank()
                         val longContent = page.startsWith("changes:") ||
@@ -167,7 +190,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                             page.startsWith("comments:") || page.startsWith("reviewcomments:") ||
                             (page.startsWith("pull:") && !canOpen)
                         if (page.startsWith("changes:")) {
-                            DiffCard(link.title, link.subtitle, onOpen =
+                            DiffCard(link.title, link.subtitle, diffComments[link.title].orEmpty(), onOpen =
                                 if (link.route.startsWith("https://github.com/")) ({ uri.openUri(link.route) }) else null)
                         } else if (longContent) {
                             WorkspaceTextBlock(link.title, link.subtitle,
