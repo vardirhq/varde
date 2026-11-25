@@ -114,6 +114,7 @@ internal fun ProductCard(product: Product, onClick: () -> Unit) {
 
 @Composable
 private fun ProductOverview(product: Product) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
     if (product.description.isNotBlank()) Text(product.description, style = MaterialTheme.typography.bodyMedium)
     listOf("What's next" to product.next, "Milestones" to product.milestones, "Ideas" to product.ideas)
         .filter { it.second.isNotBlank() }.forEach { (title, value) ->
@@ -124,4 +125,5 @@ private fun ProductOverview(product: Product) {
                 }
             }
         }
+    }
 }
