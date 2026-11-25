@@ -91,7 +91,7 @@ internal fun ProductHandover(vm: Workspace, product: Product, repos: List<Repo>,
                             if (vm.feedLoading || vm.feedIncomplete || !vm.attentionLoaded || vm.snapshotTime != null)
                                 appendLine("Attention data may be incomplete or stale; verify on GitHub.")
                             if (selectedAttention.isEmpty()) appendLine("No items in the available attention feed.")
-                            selectedAttention.forEach { appendLine("- ${it.repository} · ${it.kind}: ${it.title} — ${it.url}") }
+                            selectedAttention.forEach { appendLine("- ${it.repository} · ${it.kind.label}: ${it.title} — ${it.url}") }
                             parts.forEach { appendLine("\n$it") }
                         }
                     } catch (e: CancellationException) { throw e }

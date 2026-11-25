@@ -38,15 +38,4 @@ class StatusTest {
         assertEquals(StatusLabel(StatusTone.Success, "Open"), pullState("open", draft = false, merged = false))
         assertEquals(StatusLabel(StatusTone.Failure, "Closed"), pullState("closed", draft = false, merged = false))
     }
-
-    @Test fun attentionItemsRouteToWorkspacePages() {
-        fun item(kind: String, url: String) = AttentionItem("t", "o/r", kind, url, 1)
-        assertEquals("run:42", attentionRoute(item("Latest workflow run failed", "https://github.com/o/r/actions/runs/42")))
-        assertEquals("issue:7", attentionRoute(item("Issue", "https://github.com/o/r/issues/7")))
-        assertEquals("pull:9", attentionRoute(item("Review requested", "https://github.com/o/r/pull/9")))
-        assertEquals("pull:9", attentionRoute(item("PR checks failing", "https://github.com/o/r/pull/9")))
-        assertEquals("pull:9", attentionRoute(item("Pull request", "https://github.com/o/r/pull/9")))
-        assertEquals(null, attentionRoute(item("Issue", "https://github.com/o/r/issues/abc")))
-        assertEquals(null, attentionRoute(item("Something else", "https://github.com/o/r/pull/9")))
-    }
 }

@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -21,10 +22,12 @@ import java.util.Calendar
 internal fun InboxScreen(
     vm: Workspace, onOpenItem: (AttentionItem) -> Unit, onOpenProduct: (Product) -> Unit, onShowProducts: () -> Unit,
 ) {
-    val work = includedAttention(vm.feedItems + vm.attention, vm.excludedRepos)
+    val sections = inboxSections(includedAttention(vm.feedItems + vm.attention, vm.excludedRepos))
+    val count = sections.sumOf { it.second.size }
+    val now = remember(vm.feedItems, vm.attention) { java.time.Instant.now() }
     val focused = vm.products.filter { it.focused }.sortedBy { it.name.lowercase() }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Hero(vm.user, work.size, loading = vm.feedLoading || (vm.busy && !vm.attentionLoaded)) }
+        item { Hero(vm.user, count, loading = vm.feedLoading || (vm.busy && !vm.attentionLoaded)) }
         item { SyncStatus(vm, Modifier.padding(horizontal = ScreenGutter)) }
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = ScreenGutter), verticalAlignment = Alignment.CenterVertically) {
@@ -41,13 +44,19 @@ internal fun InboxScreen(
             vm.attentionError != null -> null
             !vm.attentionLoaded && vm.busy -> "Loading assigned work" to "Checking GitHub for open issues and pull requests assigned to you."
             !vm.attentionLoaded -> "Assigned work not loaded" to "Refresh to check GitHub for assigned work."
-            work.isEmpty() && !vm.feedLoading && !vm.feedIncomplete -> "You're all caught up" to "Review requests, failing checks, workflows and assigned work will appear here."
+            count == 0 && !vm.feedLoading && !vm.feedIncomplete -> "You're all caught up" to "Review requests, failing checks, workflows and assigned work will appear here."
             else -> null
         }
         vm.attentionError?.let { item { Notice("Couldn't load assigned work", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
         emptyState?.let { (title, message) -> item { Notice(title, message, modifier = Modifier.padding(horizontal = ScreenGutter)) } }
-        items(work, key = { "${it.kind}:${it.url}" }) { entry ->
-            AttentionCard(entry, Modifier.padding(horizontal = ScreenGutter)) { onOpenItem(entry) }
+        sections.forEach { (section, entries) ->
+            item(key = "section:${section.name}") {
+                Text("${section.title} · ${entries.size}", Modifier.padding(horizontal = ScreenGutter).padding(top = 4.dp)
+                    .semantics { heading() }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            items(entries, key = { "${it.kind}:${it.url}" }) { entry ->
+                AttentionCard(entry, now, Modifier.padding(horizontal = ScreenGutter)) { onOpenItem(entry) }
+            }
         }
         item { SectionHeader("Focused products", Modifier.padding(horizontal = ScreenGutter), "All products", onShowProducts) }
         vm.portfolioError?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
@@ -82,21 +91,18 @@ private fun Hero(user: String, count: Int, loading: Boolean) {
     }
 }
 
-private data class KindStyle(val label: String, val tone: StatusTone)
-
-private fun kindStyle(kind: String): KindStyle = when (kind) {
-    "Latest workflow run failed" -> KindStyle("Workflow failed", StatusTone.Failure)
-    "PR checks failing" -> KindStyle("Checks failing", StatusTone.Failure)
-    "Review requested" -> KindStyle("Review requested", StatusTone.Pending)
-    "Pull request" -> KindStyle("Assigned PR", StatusTone.Neutral)
-    "Issue" -> KindStyle("Assigned issue", StatusTone.Neutral)
-    else -> KindStyle(kind, StatusTone.Neutral)
+private fun AttentionKind.tone(): StatusTone = when (this) {
+    AttentionKind.ChecksFailing, AttentionKind.WorkflowFailed -> StatusTone.Failure
+    AttentionKind.ReviewRequested -> StatusTone.Pending
+    else -> StatusTone.Neutral
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AttentionCard(entry: AttentionItem, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val style = kindStyle(entry.kind)
-    val accent = when (style.tone) {
+private fun AttentionCard(entry: AttentionItem, now: java.time.Instant, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val tone = entry.kind.tone()
+    val age = relativeAge(entry.updatedAt, now)
+    val accent = when (tone) {
         StatusTone.Failure -> VardeTheme.colors.danger
         StatusTone.Pending -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.outline
@@ -105,15 +111,26 @@ private fun AttentionCard(entry: AttentionItem, modifier: Modifier = Modifier, o
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(4.dp).height(48.dp).background(accent, RoundedCornerShape(4.dp)))
             Column(Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(entry.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatusBadge(StatusLabel(style.tone, style.label))
-                    Text(entry.repository, Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row {
+                    Text(entry.title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (age != null) Text(age, Modifier.padding(start = 8.dp).semantics { contentDescription = if (age == "now") "Updated just now" else "Updated ${spokenAge(age)} ago" },
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(entry.repository, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    StatusBadge(StatusLabel(tone, entry.kind.label))
+                    entry.alsoKinds.sortedBy { it.ordinal }.forEach { Tag(it.label) }
                 }
             }
             Chevron()
         }
     }
+}
+
+private fun spokenAge(age: String): String {
+    val n = age.takeWhile { it.isDigit() }
+    val unit = when (age.drop(n.length)) { "m" -> "minute"; "h" -> "hour"; "d" -> "day"; "w" -> "week"; "mo" -> "month"; else -> return age }
+    return "$n $unit" + if (n == "1") "" else "s"
 }

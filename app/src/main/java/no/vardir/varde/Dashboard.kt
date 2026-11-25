@@ -1,7 +1,5 @@
 package no.vardir.varde
 
-data class AttentionItem(val title: String, val repository: String, val kind: String, val url: String, val repositoryId: Long)
-
 internal fun includedRepositories(repos: List<Repo>, excluded: Set<Long>): List<Repo> = repos.filterNot { it.id in excluded }
 
 internal fun includedAttention(items: List<AttentionItem>, excluded: Set<Long>): List<AttentionItem> = items.filterNot { it.repositoryId in excluded }
@@ -15,13 +13,3 @@ internal fun filterRepositories(repos: List<Repo>, query: String, owner: String?
             (it.name.contains(query, true) || it.owner.contains(query, true))
     }
 
-/** Repository page that shows [item] inside Varde, or null when it should open on GitHub. */
-internal fun attentionRoute(item: AttentionItem): String? {
-    val id = item.url.substringAfterLast('/')
-    return when (item.kind) {
-        "Latest workflow run failed" -> id.toLongOrNull()?.let { "run:$it" }
-        "Issue" -> id.toIntOrNull()?.let { "issue:$it" }
-        "PR checks failing", "Review requested", "Pull request" -> id.toIntOrNull()?.let { "pull:$it" }
-        else -> null
-    }
-}

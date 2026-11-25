@@ -14,7 +14,7 @@ internal fun ProductActivity(vm: Workspace, product: Product, repos: List<Repo>,
         evidence = loadProductEvidence(repos) { vm.workspaceLoad(it) }
     }
     val failures = productAttention(product, vm.feedItems, vm.excludedRepos)
-        .filter { it.kind == "Latest workflow run failed" }
+        .filter { it.kind == AttentionKind.WorkflowFailed }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeader("GitHub activity")
         if (vm.feedLoading) Text("Checking workflow runs…", style = MaterialTheme.typography.bodySmall)

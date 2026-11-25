@@ -14,7 +14,7 @@ class AttentionFeedTest {
                 else -> """{"workflow_runs":[{"workflow_id":1,"name":"CI","conclusion":"success"},{"workflow_id":1,"name":"CI","conclusion":"failure"},{"workflow_id":2,"name":"Android","conclusion":"failure","html_url":"https://github.com/owner/demo/actions/runs/2"}]}"""
             }
         }
-        assertEquals(listOf("Review requested", "Latest workflow run failed"), feed.items.map { it.kind })
+        assertEquals(listOf(AttentionKind.ReviewRequested, AttentionKind.WorkflowFailed), feed.items.map { it.kind })
         assertFalse(feed.incomplete)
     }
     @Test fun reportsPartialResultsWhenAnEndpointFails() = runBlocking {
