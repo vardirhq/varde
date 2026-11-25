@@ -39,7 +39,7 @@ internal fun PullSummary(body: String) {
 }
 
 @Composable
-internal fun DiffCard(title: String, patch: String, onOpen: (() -> Unit)?) {
+internal fun DiffCard(title: String, patch: String, comments: List<String>, onOpen: (() -> Unit)?) {
     var expanded by remember(title, patch) { mutableStateOf(false) }
     val colored = remember(patch) {
         buildAnnotatedString {
@@ -67,6 +67,14 @@ internal fun DiffCard(title: String, patch: String, onOpen: (() -> Unit)?) {
                     .background(MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp))
                     .horizontalScroll(rememberScrollState()).padding(12.dp),
                     fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, softWrap = false)
+                if (comments.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("Review comments", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    comments.forEach { comment ->
+                        Spacer(Modifier.height(8.dp))
+                        WorkspaceMarkdown(comment)
+                    }
+                }
                 if (onOpen != null) TextButton(onClick = onOpen) { Text("Open file on GitHub") }
             }
         }
