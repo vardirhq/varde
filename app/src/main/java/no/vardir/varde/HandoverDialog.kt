@@ -23,6 +23,7 @@ internal fun HandoverDialog(vm: Workspace, repo: Repo, page: String, response: C
     var instructions by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var warnings by remember { mutableStateOf<List<String>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var additionalEvidence by remember { mutableStateOf("") }
     var draft by remember { mutableStateOf<String?>(null) }
     val evidence = remember(page, response) {
         when {
@@ -41,6 +42,16 @@ internal fun HandoverDialog(vm: Workspace, repo: Repo, page: String, response: C
                     "Description:\n" + jsonText(pr, "body", "No description").take(12000)
                 ).joinToString("\n")
             }.getOrDefault("PR details unavailable.")
+            page.startsWith("run:") -> runCatching {
+                val jobs = JSONObject(response.body).optJSONArray("jobs")
+                (0 until (jobs?.length() ?: 0)).mapNotNull { jobs?.optJSONObject(it) }
+                    .joinToString("\n") { "Job: " + jsonText(it, "name") + " · " + jsonText(it, "status") + " · " + jsonText(it, "conclusion") }
+            }.getOrDefault("Jobs unavailable.")
+            page.startsWith("changes:") -> runCatching {
+                val files = org.json.JSONArray(response.body)
+                (0 until files.length()).mapNotNull { files.optJSONObject(it) }
+                    .joinToString("\n") { jsonText(it, "filename") + " · " + jsonText(it, "status") }
+            }.getOrDefault("Changed files unavailable.")
             else -> ""
         }
     }
@@ -57,6 +68,25 @@ internal fun HandoverDialog(vm: Workspace, repo: Repo, page: String, response: C
                 found.add(("$name (repository default branch" + if (result.cached) ", cached)" else ")") to decoded.take(16000))
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { missing.add("$name unavailable; check it manually.") }
+        }
+        if (page.startsWith("pull:") && response != null) {
+            try {
+                val pr = JSONObject(response.body)
+                val number = page.substringAfter(':')
+                val sha = pr.optJSONObject("head")?.optString("sha").orEmpty()
+                val filesResult = vm.workspaceLoad(repoApi(repo) + "/pulls/" + number + "/files?per_page=100")
+                val files = org.json.JSONArray(filesResult.body)
+                val names = (0 until files.length()).mapNotNull { files.optJSONObject(it) }
+                    .joinToString("\n") { jsonText(it, "filename") + " · " + jsonText(it, "status") }
+                val checksResult = if (sha.isNotBlank()) vm.workspaceLoad(repoApi(repo) + "/commits/" + pathPart(sha) + "/check-runs?per_page=100") else null
+                val checks = checksResult?.let { JSONObject(it.body).optJSONArray("check_runs") }
+                val summaries = (0 until (checks?.length() ?: 0)).mapNotNull { checks?.optJSONObject(it) }
+                    .joinToString("\n") { jsonText(it, "name") + " · " + jsonText(it, "status") + " · " + jsonText(it, "conclusion") }
+                additionalEvidence = "Changed files (up to 100" + (if (filesResult.cached) ", cached" else "") + "):\n" + names +
+                    "\n\nCheck runs (up to 100" + (if (checksResult?.cached == true) ", cached" else "") + "):\n" +
+                    (if (checksResult == null) "Head SHA unavailable." else summaries.ifBlank { "No check runs returned." })
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { missing.add("Changed files or checks unavailable; inspect them manually.") }
         }
         instructions = found
         warnings = missing
@@ -90,7 +120,7 @@ internal fun HandoverDialog(vm: Workspace, repo: Repo, page: String, response: C
         confirmButton = {
             if (draft == null) TextButton(enabled = !loading, onClick = {
                 val note = if (warnings.isEmpty()) "" else warnings.joinToString("\n")
-                draft = buildHandover(repo.url, page, request, listOf(evidence, note).filter { it.isNotBlank() }.joinToString("\n\n"), instructions)
+                draft = buildHandover(repo.url, page, request, listOf(evidence, additionalEvidence, note).filter { it.isNotBlank() }.joinToString("\n\n"), instructions)
             }) { Text("Review brief") }
             else TextButton(onClick = {
                 val intent = Intent(Intent.ACTION_SEND).setType("text/plain")
