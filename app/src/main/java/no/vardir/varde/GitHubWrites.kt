@@ -53,3 +53,12 @@ internal fun buildWriteRequest(repo: Repo, action: WriteAction, token: String): 
     val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
     return if (action.kind == WriteKind.MERGE) request.put(body).build() else request.post(body).build()
 }
+
+internal fun buildCreateIssueRequest(repo: Repo, title: String, text: String, token: String): Request {
+    require(title.isNotBlank())
+    val payload = JSONObject().put("title", title).put("body", text).toString()
+    return Request.Builder().url("https://api.github.com/" + repoApi(repo) + "/issues")
+        .header("Authorization", "Bearer $token").header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+}
