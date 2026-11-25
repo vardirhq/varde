@@ -41,3 +41,15 @@ internal fun buildHandover(
         appendLine(value)
     }
 }
+
+internal fun actionJobRoute(url: String): String? {
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return null
+    if (uri.scheme != "https" || uri.host != "github.com") return null
+    val match = Regex("""/[^/]+/[^/]+/actions/runs/(\d+)/job/(\d+)/?""").matchEntire(uri.path ?: "") ?: return null
+    return "log:${match.groupValues[2]}:${match.groupValues[1]}"
+}
+
+internal fun hasFailedJobs(body: String): Boolean = runCatching {
+    val jobs = org.json.JSONObject(body).optJSONArray("jobs") ?: return@runCatching false
+    (0 until jobs.length()).any { jobs.optJSONObject(it)?.optString("conclusion") == "failure" }
+}.getOrDefault(false)
