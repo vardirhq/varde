@@ -79,7 +79,7 @@ class GitHub(private val clientId: String) {
                 }
             }
         } catch (e: java.io.IOException) {
-            throw IllegalStateException("Connection interrupted. The action may have completed; refresh GitHub before trying again.", e)
+            throw WriteOutcomeUnknown(e)
         }
     }
     internal suspend fun rerunFailedJobs(repo: Repo, runId: Long, token: String) = withContext(Dispatchers.IO) {
