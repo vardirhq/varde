@@ -74,6 +74,8 @@ internal fun ProductHandover(vm: Workspace, product: Product, repos: List<Repo>,
                             appendLine("Stage: ${product.stage} · Priority: ${product.priority}")
                             appendLine("Description: ${product.description}")
                             appendLine("Next: ${product.next}")
+                            if (product.milestones.isNotBlank()) appendLine("Milestone notes: ${product.milestones}")
+                            if (product.ideas.isNotBlank()) appendLine("Idea notes: ${product.ideas}")
                             appendLine("\n## Request\n$request")
                             appendLine("\n## Repositories")
                             if (chosen.isEmpty()) appendLine("None selected.")
@@ -83,6 +85,12 @@ internal fun ProductHandover(vm: Workspace, product: Product, repos: List<Repo>,
                                 product.work.forEach { appendLine("- [${if (it.done) "x" else " "}] ${it.kind}: ${it.title}" +
                                     (if (it.url.isBlank()) "" else " — ${it.url}")) }
                             }
+                            val selectedAttention = (vm.feedItems + vm.attention).filter { it.repositoryId in selected && it.repositoryId !in vm.excludedRepos }
+                            appendLine("\n## Available attention")
+                            if (vm.feedLoading || vm.feedIncomplete || !vm.attentionLoaded || vm.snapshotTime != null)
+                                appendLine("Attention data may be incomplete or stale; verify on GitHub.")
+                            if (selectedAttention.isEmpty()) appendLine("No items in the available attention feed.")
+                            selectedAttention.forEach { appendLine("- ${it.repository} · ${it.kind}: ${it.title} — ${it.url}") }
                             parts.forEach { appendLine("\n$it") }
                         }
                     } catch (e: CancellationException) { throw e }
