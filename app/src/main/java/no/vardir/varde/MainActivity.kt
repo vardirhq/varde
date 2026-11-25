@@ -79,8 +79,8 @@ class Workspace(application: Application) : AndroidViewModel(application) {
             finally { busy = false; code = null }
         }
     }
-    fun signIn(privateAccess: Boolean) = runTask {
-        val device = github.start(privateAccess)
+    fun signIn(privateAccess: Boolean, publicWrite: Boolean) = runTask {
+        val device = github.start(privateAccess, publicWrite)
         code = device.userCode
         val access = github.authorize(device,
             onConnectionProblem = { error = "Can't reach GitHub. Check your connection; retrying until the code expires." },
