@@ -94,8 +94,8 @@ class GitHub(private val clientId: String) {
         try {
             http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) error("GitHub rejected issue creation (HTTP ${response.code}). Check access and permissions.")
-                val url = JSONObject(response.body?.string().orEmpty()).optString("html_url")
-                check(validWorkLink(url)) { "GitHub did not return a valid issue link. Check GitHub before retrying." }
+                val url = runCatching { JSONObject(response.body?.string().orEmpty()).optString("html_url") }.getOrDefault("")
+                if (!validWorkLink(url) || url.isBlank()) throw WriteOutcomeUnknown(IllegalStateException("Invalid issue response"))
                 url
             }
         } catch (e: java.io.IOException) { throw WriteOutcomeUnknown(e) }
