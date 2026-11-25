@@ -1,141 +1,136 @@
 package no.vardir.varde
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import java.util.UUID
+
+private fun prioritySort(priority: String) = when (priority) { "High" -> 0; "Normal" -> 1; else -> 2 }
 
 @Composable
-internal fun PortfolioView(
-    vm: Workspace, initialProductId: String? = null, onBack: () -> Unit,
-    onOpenRepo: (Repo, String, String) -> Unit
-) {
-    var selectedId by rememberSaveable { mutableStateOf(initialProductId) }
-    var editing by remember { mutableStateOf<Product?>(null) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    var showHandover by remember { mutableStateOf(false) }
-    val selected = vm.products.firstOrNull { it.id == selectedId }
-    fun back() {
-        when {
-            editing != null -> editing = null
-            selectedId != null -> selectedId = null
-            else -> onBack()
-        }
-    }
-    BackHandler { back() }
-    if (showHandover && selected != null) {
-        val chosen = selected.repositoryIds.mapNotNull { id -> vm.repos.firstOrNull { it.id == id && id !in vm.excludedRepos } }
-        ProductHandover(vm, selected, chosen) { showHandover = false }
-    }
-    if (confirmDelete && selected != null) {
-        AlertDialog(onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete ${selected.name}?") },
-            text = { Text("This removes the local product, notes, and milestones. GitHub repositories are unchanged.") },
-            confirmButton = { TextButton(onClick = {
-                if (vm.deleteProduct(selected.id)) selectedId = null
-                confirmDelete = false
-            }) { Text("Delete product") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } })
-    }
-    val editor = editing
-    if (editor != null) {
-        ProductEditor(editor, vm.repos.filterNot { it.id in vm.excludedRepos }, vm.portfolioError,
-            onCancel = { editing = null }, onSave = {
-                if (vm.saveProduct(it)) { selectedId = it.id; editing = null }
-            })
-        return
-    }
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onSurface) {
-        LazyColumn(Modifier.fillMaxSize().safeDrawingPadding(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item {
-                TextButton(onClick = { back() }) { Text("‹  Back") }
-                Text(selected?.name ?: "Portfolio", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(if (selected == null) "Your products and their repositories" else "${selected.stage} · ${selected.priority} priority",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+internal fun ProductsScreen(vm: Workspace, onOpen: (Product) -> Unit, onCreate: () -> Unit) {
+    val sorted = vm.products.sortedWith(compareByDescending<Product> { it.focused }
+        .thenBy { prioritySort(it.priority) }.thenBy { it.name.lowercase() })
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item { ScreenTitle("Products", "Group repositories, set priorities and track next steps") }
+            vm.portfolioError?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error) } }
+            if (vm.products.isEmpty() && vm.portfolioError == null) item {
+                Notice("No products yet", "A product groups related repositories with its stage, priority and next step.")
             }
-            vm.portfolioError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
-            if (selected == null) {
-                item {
-                    Button(onClick = { editing = Product(UUID.randomUUID().toString(), "") },
-                        enabled = vm.portfolioError == null, modifier = Modifier.fillMaxWidth()) { Text("Create product") }
-                }
-                if (vm.products.isEmpty() && vm.portfolioError == null) item {
-                    Text("Group related repositories into a product, then add your priorities and next steps.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                item { PortfolioBackupControls(vm) }
-                val sorted = vm.products.sortedWith(compareByDescending<Product> { it.focused }
-                    .thenBy { when (it.priority) { "High" -> 0; "Normal" -> 1; else -> 2 } }.thenBy { it.name.lowercase() })
-                items(sorted, key = { it.id }) { product ->
-                    ProductCard(product) { selectedId = product.id }
-                }
-            } else {
-                item { ProductOverview(selected) }
-                item {
-                    OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare product handover") }
-                }
-                item { ProductWork(vm, selected, selected.repositoryIds.mapNotNull { id -> vm.repos.firstOrNull { it.id == id && id !in vm.excludedRepos } }) }
-                item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { editing = selected }, enabled = vm.portfolioError == null) { Text("Edit") }
-                    OutlinedButton(onClick = { confirmDelete = true }, enabled = vm.portfolioError == null) { Text("Delete") }
-                } }
-                val available = selected.repositoryIds.mapNotNull { id -> vm.repos.firstOrNull { it.id == id && id !in vm.excludedRepos } }
-                val missing = selected.repositoryIds.size - available.size
-                item { Text("Repositories", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                if (available.isEmpty()) item { Text("No visible repositories linked.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                if (missing > 0) item { Text("$missing linked repositories are hidden or unavailable.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                items(available, key = { it.id }) { repo ->
-                    OutlinedCard(onClick = { onOpenRepo(repo, "overview", selected.id) }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(14.dp)) {
-                            Text(repo.name, style = MaterialTheme.typography.titleMedium)
-                            Text(repo.owner, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-                item { ProductActivity(vm, selected, available) { repo, route -> onOpenRepo(repo, route, selected.id) } }
-            }
+            items(sorted, key = { it.id }) { product -> ProductCard(product) { onOpen(product) } }
         }
+        if (vm.portfolioError == null) ExtendedFloatingActionButton(onClick = onCreate,
+            icon = { Icon(Icons.Default.Add, contentDescription = null) }, text = { Text("New product") },
+            modifier = Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(16.dp))
     }
 }
 
 @Composable
-internal fun ProductCard(product: Product, onClick: () -> Unit) {
-    OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(product.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text((if (product.focused) "Focused · " else "") + "${product.stage} · ${product.priority} priority",
-                color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-            if (product.next.isNotBlank()) Text(product.next, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
-            if (product.work.any { !it.done }) Text("${product.work.count { !it.done }} open work items",
-                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            Text("${product.repositoryIds.size} linked repositories", color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall)
+internal fun ProductScreen(
+    vm: Workspace, productId: String, onBack: () -> Unit, onEdit: () -> Unit, onOpenRepo: (Repo, String) -> Unit,
+) {
+    val product = vm.products.firstOrNull { it.id == productId }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var showHandover by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    if (product == null) {
+        Column(Modifier.fillMaxSize()) {
+            DetailTopBar("Product not found", onBack)
+            Notice("Product not found", "It may have been deleted.", NoticeKind.Warning, Modifier.padding(horizontal = ScreenGutter))
         }
+        return
+    }
+    val available = product.repositoryIds.mapNotNull { id -> vm.repos.firstOrNull { it.id == id && id !in vm.excludedRepos } }
+    val missing = product.repositoryIds.size - available.size
+    if (showHandover) ProductHandover(vm, product, available) { showHandover = false }
+    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
+        title = { Text("Delete ${product.name}?") },
+        text = { Text("This removes the local product, notes, and milestones. GitHub repositories are unchanged.") },
+        confirmButton = { TextButton(onClick = {
+            confirmDelete = false
+            if (vm.deleteProduct(product.id)) onBack()
+        }) { Text("Delete product") } },
+        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } })
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            DetailTopBar(product.name, onBack, eyebrow = "Product", actions = {
+                TextButton(onClick = onEdit, enabled = vm.portfolioError == null) { Text("Edit") }
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More product actions") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Delete product…") }, enabled = vm.portfolioError == null,
+                            onClick = { menu = false; confirmDelete = true })
+                    }
+                }
+            })
+        }
+        item {
+            Row(Modifier.padding(horizontal = ScreenGutter), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (product.focused) Tag("Focused", emphasized = true)
+                Tag(product.stage)
+                Tag("${product.priority} priority")
+            }
+        }
+        vm.portfolioError?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
+        item { Box(Modifier.padding(horizontal = ScreenGutter)) { ProductOverview(product) } }
+        item {
+            OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth().padding(horizontal = ScreenGutter)) {
+                Text("Prepare agent handover")
+            }
+        }
+        item { Box(Modifier.padding(horizontal = ScreenGutter)) { ProductWork(vm, product, available) } }
+        item { SectionHeader("Repositories", Modifier.padding(horizontal = ScreenGutter)) }
+        if (available.isEmpty()) item { Notice("No visible repositories linked", "Edit the product to link repositories.",
+            modifier = Modifier.padding(horizontal = ScreenGutter)) }
+        if (missing > 0) item { Notice("$missing linked repositories are hidden or unavailable", null, NoticeKind.Warning,
+            Modifier.padding(horizontal = ScreenGutter)) }
+        items(available, key = { it.id }) { repo ->
+            Box(Modifier.padding(horizontal = ScreenGutter)) {
+                NavRow(repo.name, repo.owner) { onOpenRepo(repo, "overview") }
+            }
+        }
+        item { Box(Modifier.padding(horizontal = ScreenGutter)) { ProductActivity(vm, product, available, onOpenRepo) } }
+    }
+}
+
+@Composable
+internal fun ProductCard(product: Product, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val open = product.work.count { !it.done }
+    VardeCard(modifier, onClick = onClick) {
+        Text(product.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (product.focused) Tag("Focused", emphasized = true)
+            Tag(product.stage)
+            Tag("${product.priority} priority")
+        }
+        if (product.next.isNotBlank()) Text(product.next, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(listOfNotNull(
+            if (open > 0) "$open open work items" else null,
+            "${product.repositoryIds.size} linked repositories",
+        ).joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
 private fun ProductOverview(product: Product) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    if (product.description.isNotBlank()) Text(product.description, style = MaterialTheme.typography.bodyMedium)
-    listOf("What's next" to product.next, "Milestones" to product.milestones, "Ideas" to product.ideas)
-        .filter { it.second.isNotBlank() }.forEach { (title, value) ->
-            OutlinedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (product.description.isNotBlank()) Text(product.description, style = MaterialTheme.typography.bodyMedium)
+        listOf("What's next" to product.next, "Milestones" to product.milestones, "Ideas" to product.ideas)
+            .filter { it.second.isNotBlank() }.forEach { (title, value) ->
+                VardeCard {
                     Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     Text(value, style = MaterialTheme.typography.bodyMedium)
                 }
             }
-        }
     }
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Varde" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/varde_background</item>
+    </style>
+    <color name="varde_background">#101720</color>
+</resources>

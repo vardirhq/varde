@@ -8,6 +8,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -21,16 +23,14 @@ import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
 
-private data class WorkspaceLink(val title: String, val subtitle: String, val route: String)
+private data class WorkspaceLink(val title: String, val subtitle: String, val route: String, val status: StatusLabel? = null)
 
 @Composable
-internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String = "overview", onBack: () -> Unit) {
-    var page by remember(repo.id) { mutableStateOf(initialPage) }
+internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
     var payload by remember { mutableStateOf<CachedResponse?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var generation by remember { mutableIntStateOf(0) }
-    val history = remember(repo.id) { mutableStateListOf<String>() }
     var showHandover by remember { mutableStateOf(false) }
     var confirmRerun by remember { mutableStateOf(false) }
     var writeKind by remember { mutableStateOf<WriteKind?>(null) }
@@ -40,7 +40,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
     var diffComments by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var diffCommentWarning by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    fun navigate(next: String) { history.add(page); page = next; rerunMessage = null }
+    fun navigate(next: String) = onNavigate(next)
     val uri = LocalUriHandler.current
     val base = repoApi(repo)
     val endpoint = when {
@@ -89,22 +89,6 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
             catch (_: Exception) { diffCommentWarning = "Review comments couldn't be loaded." }
         }
     }
-    fun back() {
-        if (history.isNotEmpty()) { page = history.removeAt(history.lastIndex); return }
-        page = when {
-            page == "overview" -> { onBack(); return }
-            page.startsWith("issuecomments:") -> "issue:" + page.substringAfter(':')
-            page.startsWith("issue:") -> "issues"
-            page.startsWith("changes:") || page.startsWith("comments:") || page.startsWith("reviewcomments:") -> "pull:" + page.substringAfter(':')
-            page.startsWith("statuses:") || page.startsWith("checks:") -> "pulls"
-            page.startsWith("pull:") -> "pulls"
-            page.startsWith("log:") -> "runs"
-            page.startsWith("run:") -> "runs"
-            page.startsWith("files:") && page.removePrefix("files:").contains('/') -> "files:" + page.removePrefix("files:").substringBeforeLast('/')
-            else -> "overview"
-        }
-    }
-    androidx.activity.compose.BackHandler { back() }
     writeKind?.let { kind ->
         val number = page.substringAfter(':').toIntOrNull()
         val data = payload
@@ -141,41 +125,30 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         color = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
+      Column(Modifier.fillMaxSize()) {
+        DetailTopBar(if (page == "overview") repo.name else workspacePageTitle(page), onBack,
+            eyebrow = if (page == "overview") repo.owner else "${repo.owner} / ${repo.name}", actions = {
+            IconButton(onClick = { generation++ }, enabled = !loading) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+            }
+        })
         LazyColumn(
-            modifier = Modifier.fillMaxSize().safeDrawingPadding(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = { back() }) { Text("‹  Back") }
-                    TextButton(onClick = { generation++ }, enabled = !loading) { Text("Refresh") }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(repo.owner.uppercase(), style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(4.dp))
-                Text(repo.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(workspacePageTitle(page), color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(14.dp))
-            }
             if (page.startsWith("pull:") || page.startsWith("log:") || page.startsWith("run:") || page.startsWith("changes:")) item {
                 OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare agent handover") }
             }
             if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            rerunMessage?.let { message -> item { WorkspaceNotice("Workflow rerun", message) } }
-            writeMessage?.let { message -> item { WorkspaceNotice("GitHub action", message) } }
+            rerunMessage?.let { message -> item { Notice("Workflow rerun", message) } }
+            writeMessage?.let { message -> item { Notice("GitHub action", message) } }
             error?.let { message -> item {
-                WorkspaceNotice("Couldn't load this view", message, isError = true)
+                Notice("Couldn't load this view", message, NoticeKind.Error)
             } }
             payload?.let { response ->
                 if (response.cached) item {
-                    WorkspaceNotice("Offline copy", "Saved ${DateFormat.getDateTimeInstance().format(Date(response.savedAt))}")
+                    Notice("Offline copy", "Saved ${DateFormat.getDateTimeInstance().format(Date(response.savedAt))}")
                 }
                 if (page.startsWith("log:")) {
                     item { JobLogPanel(response.body) }
@@ -183,14 +156,14 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                     val result = runCatching { workspaceLinks(page, response.body) }
                     val links = result.getOrDefault(emptyList())
                     if (result.isFailure) item {
-                        WorkspaceNotice("Couldn't read this view", "The GitHub response could not be displayed.", isError = true)
+                        Notice("Couldn't read this view", "The GitHub response could not be displayed.", NoticeKind.Error)
                     }
                     if (page == "overview" && repo.description.isNotBlank()) item {
                         Text(repo.description, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
                     }
                     if (links.isEmpty() && result.isSuccess) item {
-                        WorkspaceNotice("Nothing here yet", "There is nothing to show in this view.")
+                        Notice("Nothing here yet", "There is nothing to show in this view.")
                     }
                     if ((page.startsWith("pull:") || page.startsWith("issue:")) && !response.cached) item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -203,7 +176,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                         }
                     }
                     if ((page.startsWith("pull:") || page.startsWith("issue:")) && response.cached) item {
-                        WorkspaceNotice("Actions unavailable offline", "Reconnect and refresh before submitting GitHub actions.")
+                        Notice("Actions unavailable offline", "Reconnect and refresh before submitting GitHub actions.")
                     }
                     if (page.startsWith("pull:")) {
                         item { PullSummary(response.body) }
@@ -213,7 +186,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                         OutlinedButton(onClick = { confirmRerun = true }, enabled = !rerunning,
                             modifier = Modifier.fillMaxWidth()) { Text(if (rerunning) "Requesting rerun…" else "Rerun failed jobs") }
                     }
-                    diffCommentWarning?.let { message -> item { WorkspaceNotice("Review comments", message) } }
+                    diffCommentWarning?.let { message -> item { Notice("Review comments", message) } }
                     items(links) { link ->
                         val canOpen = link.route.isNotBlank()
                         val longContent = page.startsWith("changes:") ||
@@ -232,7 +205,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                                 languageHint = if (page.startsWith("files:")) link.title else "",
                                 onOpen = if (link.route.startsWith("https://github.com/")) ({ uri.openUri(link.route) }) else null)
                         } else {
-                            WorkspaceRow(link, onClick = if (!canOpen) null else {
+                            NavRow(link.title, link.subtitle, link.status, onClick = if (!canOpen) null else {
                                 {
                                     if (link.route.startsWith("https://github.com/")) uri.openUri(link.route)
                                     else navigate(link.route)
@@ -243,6 +216,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                 }
             }
         }
+      }
     }
 }
 
@@ -267,32 +241,12 @@ private fun workspacePageTitle(page: String): String = when {
 }
 
 @Composable
-private fun WorkspaceRow(link: WorkspaceLink, onClick: (() -> Unit)?) {
-    val shape = RoundedCornerShape(14.dp)
-    val background = MaterialTheme.colorScheme.surfaceVariant
-    val body: @Composable () -> Unit = {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(link.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                if (link.subtitle.isNotBlank()) Text(link.subtitle, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (onClick != null) Text("›", Modifier.padding(start = 12.dp),
-                style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-        }
-    }
-    if (onClick == null) Surface(color = background, shape = shape, content = body)
-    else Surface(onClick = onClick, color = background, shape = shape, content = body)
-}
-
-@Composable
 private fun WorkspaceTextBlock(
     title: String, text: String, monospace: Boolean = false, markdown: Boolean = false,
     languageHint: String = "", onOpen: (() -> Unit)? = null
 ) {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(14.dp)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    VardeCard {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary)
             when {
@@ -304,16 +258,6 @@ private fun WorkspaceTextBlock(
             }
             if (onOpen != null) TextButton(onClick = onOpen) { Text("Open on GitHub") }
         }
-    }
-}
-
-@Composable
-private fun WorkspaceNotice(title: String, message: String, isError: Boolean = false) {
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp))
-        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-        Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -360,13 +304,13 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
         return (0 until checks.length()).map { i ->
             val o = checks.getJSONObject(i)
             val target = jsonText(o, "details_url").ifBlank { jsonText(o, "html_url") }
-            WorkspaceLink(jsonText(o, "name"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}",
-                actionJobRoute(target) ?: target)
+            WorkspaceLink(jsonText(o, "name"), "", actionJobRoute(target) ?: target,
+                ciStatus(jsonText(o, "status"), jsonText(o, "conclusion")))
         }.ifEmpty { listOf(WorkspaceLink("No check runs", "No check runs were returned for this commit.", "")) }
     }
     if (page.startsWith("statuses:") && parsed is JSONObject) {
         val statuses = parsed.optJSONArray("statuses") ?: JSONArray()
-        return (0 until statuses.length()).map { i -> val o = statuses.getJSONObject(i); WorkspaceLink(jsonText(o, "context"), "${jsonText(o, "state")} · ${jsonText(o, "description")}", jsonText(o, "target_url")) }
+        return (0 until statuses.length()).map { i -> val o = statuses.getJSONObject(i); WorkspaceLink(jsonText(o, "context"), jsonText(o, "description"), jsonText(o, "target_url"), commitStatus(jsonText(o, "state"))) }
             .ifEmpty { listOf(WorkspaceLink("No commit statuses", "GitHub checks may be available on the pull request page.", "")) }
     }
     val array = when { page == "runs" && parsed is JSONObject -> parsed.optJSONArray("workflow_runs")
@@ -379,9 +323,12 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
             page == "commits" -> WorkspaceLink(o.optJSONObject("commit")?.optString("message")?.lineSequence()?.firstOrNull().orEmpty(), jsonText(o, "sha").take(8), jsonText(o, "html_url"))
             page == "issues" && o.has("pull_request") -> null
             page == "issues" -> WorkspaceLink("#${o.optInt("number")} ${jsonText(o, "title")}", "Open issue", "issue:${o.optInt("number")}")
-            page == "pulls" -> WorkspaceLink("#${o.optInt("number")} ${jsonText(o, "title")}", jsonText(o, "state"), "pull:${o.optInt("number")}")
-            page == "runs" -> WorkspaceLink(jsonText(o, "name", "Workflow"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}", "run:${o.optLong("id")}")
-            page.startsWith("run:") -> WorkspaceLink(jsonText(o, "name", "Job"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}", "log:${o.optLong("id")}:${page.substringAfter(':')}")
+            page == "pulls" -> WorkspaceLink("#${o.optInt("number")} ${jsonText(o, "title")}", o.optJSONObject("user")?.optString("login").orEmpty(),
+                "pull:${o.optInt("number")}", pullState(jsonText(o, "state"), o.optBoolean("draft"), false))
+            page == "runs" -> WorkspaceLink(jsonText(o, "name", "Workflow"), listOf(jsonText(o, "head_branch"), jsonText(o, "event")).filter { it.isNotBlank() }.joinToString(" · "),
+                "run:${o.optLong("id")}", ciStatus(jsonText(o, "status"), jsonText(o, "conclusion")))
+            page.startsWith("run:") -> WorkspaceLink(jsonText(o, "name", "Job"), "", "log:${o.optLong("id")}:${page.substringAfter(':')}",
+                ciStatus(jsonText(o, "status"), jsonText(o, "conclusion")))
             page.startsWith("files:") -> WorkspaceLink(jsonText(o, "name"), jsonText(o, "type"), "files:${jsonText(o, "path")}")
             page.startsWith("changes:") -> WorkspaceLink(jsonText(o, "filename"), jsonText(o, "patch", "Patch unavailable"), jsonText(o, "blob_url"))
             page.startsWith("comments:") || page.startsWith("reviewcomments:") || page.startsWith("issuecomments:") -> WorkspaceLink(o.optJSONObject("user")?.optString("login").orEmpty(), jsonText(o, "body"), jsonText(o, "html_url"))

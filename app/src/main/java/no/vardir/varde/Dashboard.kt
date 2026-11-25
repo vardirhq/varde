@@ -14,3 +14,14 @@ internal fun filterRepositories(repos: List<Repo>, query: String, owner: String?
         (owner == null || it.owner == owner) && (showArchived || !it.archived) &&
             (it.name.contains(query, true) || it.owner.contains(query, true))
     }
+
+/** Repository page that shows [item] inside Varde, or null when it should open on GitHub. */
+internal fun attentionRoute(item: AttentionItem): String? {
+    val id = item.url.substringAfterLast('/')
+    return when (item.kind) {
+        "Latest workflow run failed" -> id.toLongOrNull()?.let { "run:$it" }
+        "Issue" -> id.toIntOrNull()?.let { "issue:$it" }
+        "PR checks failing", "Review requested", "Pull request" -> id.toIntOrNull()?.let { "pull:$it" }
+        else -> null
+    }
+}

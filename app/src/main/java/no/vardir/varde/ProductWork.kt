@@ -46,7 +46,7 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } })
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Work & ideas", style = MaterialTheme.typography.titleLarge)
+        SectionHeader("Work & ideas")
         vm.portfolioError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Text("Local items can link to a GitHub issue or pull request.", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -56,8 +56,8 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
         if (product.work.isEmpty()) Text("Nothing added yet.", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         product.work.forEachIndexed { index, item ->
-            OutlinedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            VardeCard(contentPadding = PaddingValues(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth()) {
                         Checkbox(item.done, { update(item.copy(done = it)) })
                         Column(Modifier.weight(1f).padding(top = 8.dp)) {

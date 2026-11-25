@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launch window only; Compose draws the app. Matches VardeTheme backgrounds to avoid a flash. -->
+    <style name="Theme.Varde" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/varde_background</item>
+    </style>
+    <color name="varde_background">#FBF8F4</color>
+</resources>

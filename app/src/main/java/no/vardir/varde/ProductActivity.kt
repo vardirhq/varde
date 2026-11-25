@@ -16,7 +16,7 @@ internal fun ProductActivity(vm: Workspace, product: Product, repos: List<Repo>,
     val failures = productAttention(product, vm.feedItems, vm.excludedRepos)
         .filter { it.kind == "Latest workflow run failed" }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("GitHub activity", style = MaterialTheme.typography.titleLarge)
+        SectionHeader("GitHub activity")
         if (vm.feedLoading) Text("Checking workflow runs…", style = MaterialTheme.typography.bodySmall)
         if (vm.feedIncomplete || !vm.attentionLoaded || vm.snapshotTime != null) Text("Workflow coverage may be incomplete or unavailable.", color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall)
@@ -37,8 +37,8 @@ internal fun ProductActivity(vm: Workspace, product: Product, repos: List<Repo>,
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         evidence?.events?.forEach { event ->
             val repo = repos.firstOrNull { it.id == event.repositoryId }
-            if (repo != null) OutlinedCard(onClick = { onOpenRepo(repo, event.route) }, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
+            if (repo != null) VardeCard(onClick = { onOpenRepo(repo, event.route) }, contentPadding = PaddingValues(12.dp)) {
+                Column {
                     Text(event.title, style = MaterialTheme.typography.bodyMedium)
                     Text("${event.repository} · ${event.kind}" +
                         if (event.timestamp.isBlank()) "" else " · ${event.timestamp.take(10)}",
