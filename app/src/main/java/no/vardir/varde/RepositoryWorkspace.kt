@@ -128,6 +128,10 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                         if (longContent) {
                             WorkspaceTextBlock(link.title, link.subtitle,
                                 monospace = page.startsWith("changes:") || page.startsWith("files:"),
+                                markdown = page.startsWith("pull:") || page.startsWith("comments:") ||
+                                    page.startsWith("reviewcomments:") ||
+                                    (page.startsWith("files:") && link.title.endsWith(".md", ignoreCase = true)),
+                                languageHint = if (page.startsWith("files:")) link.title else "",
                                 onOpen = if (link.route.startsWith("https://github.com/")) ({ uri.openUri(link.route) }) else null)
                         } else {
                             WorkspaceRow(link, onClick = if (!canOpen) null else {
@@ -183,14 +187,21 @@ private fun WorkspaceRow(link: WorkspaceLink, onClick: (() -> Unit)?) {
 }
 
 @Composable
-private fun WorkspaceTextBlock(title: String, text: String, monospace: Boolean = false, onOpen: (() -> Unit)? = null) {
+private fun WorkspaceTextBlock(
+    title: String, text: String, monospace: Boolean = false, markdown: Boolean = false,
+    languageHint: String = "", onOpen: (() -> Unit)? = null
+) {
     Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(14.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary)
-            Text(text, style = MaterialTheme.typography.bodySmall,
-                fontFamily = if (monospace) FontFamily.Monospace else FontFamily.Default,
-                color = MaterialTheme.colorScheme.onSurface)
+            when {
+                markdown -> WorkspaceMarkdown(text)
+                monospace && languageHint.isNotBlank() -> WorkspaceCode(text, languageHint)
+                else -> Text(text, style = MaterialTheme.typography.bodySmall,
+                    fontFamily = if (monospace) FontFamily.Monospace else FontFamily.Default,
+                    color = MaterialTheme.colorScheme.onSurface)
+            }
             if (onOpen != null) TextButton(onClick = onOpen) { Text("Open on GitHub") }
         }
     }
