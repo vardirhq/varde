@@ -40,4 +40,16 @@ class ProductWorkspaceTest {
         assertEquals(listOf("issue:3", "pull:7", "commits"), result.events.map { it.route })
         assertTrue(result.events.all { it.repositoryId == 1L })
     }
+    @Test fun issueRequestTargetsTheChosenRepository() {
+        val repo = Repo(1, "demo", "owner", "", false, false, "https://github.com/owner/demo")
+        val request = buildCreateIssueRequest(repo, "Fix issue", "Details", "test-token")
+        assertEquals("POST", request.method)
+        assertEquals("/repos/owner/demo/issues", request.url.encodedPath)
+        val buffer = okio.Buffer()
+        request.body!!.writeTo(buffer)
+        val json = org.json.JSONObject(buffer.readUtf8())
+        assertEquals("Fix issue", json.getString("title"))
+        assertEquals("Details", json.getString("body"))
+        assertThrows(IllegalArgumentException::class.java) { buildCreateIssueRequest(repo, " ", "", "x") }
+    }
 }
