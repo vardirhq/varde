@@ -16,10 +16,10 @@ import java.util.UUID
 
 @Composable
 internal fun PortfolioView(
-    vm: Workspace, onBack: () -> Unit,
+    vm: Workspace, initialProductId: String? = null, onBack: () -> Unit,
     onOpenRepo: (Repo, String) -> Unit
 ) {
-    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedId by rememberSaveable { mutableStateOf(initialProductId) }
     var editing by remember { mutableStateOf<Product?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     val selected = vm.products.firstOrNull { it.id == selectedId }
