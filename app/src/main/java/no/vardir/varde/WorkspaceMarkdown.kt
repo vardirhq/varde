@@ -36,7 +36,7 @@ private fun MarkdownChildren(parent: Node) {
                 2 -> MaterialTheme.typography.titleLarge
                 else -> MaterialTheme.typography.titleMedium
             }, bold = true)
-            is Paragraph -> MarkdownInline(current, MaterialTheme.typography.bodyMedium)
+            is org.commonmark.node.Paragraph -> MarkdownInline(current, MaterialTheme.typography.bodyMedium)
             is FencedCodeBlock -> WorkspaceCode(current.literal.trimEnd(), current.info)
             is IndentedCodeBlock -> WorkspaceCode(current.literal.trimEnd(), "")
             is BlockQuote -> Row(Modifier.fillMaxWidth()) {
