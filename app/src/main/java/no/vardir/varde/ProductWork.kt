@@ -24,10 +24,10 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
     var deleting by remember { mutableStateOf<WorkItem?>(null) }
     var creatingIssue by remember { mutableStateOf<WorkItem?>(null) }
     val uriHandler = LocalUriHandler.current
-    fun update(item: WorkItem) {
+    fun update(item: WorkItem): Boolean {
         val items = if (product.work.any { it.id == item.id }) product.work.map { if (it.id == item.id) item else it }
             else product.work + item
-        vm.saveProduct(product.copy(work = items))
+        return vm.saveProduct(product.copy(work = items))
     }
     creatingIssue?.let { item ->
         ProductIssueDialog(vm, item, repos, onClose = { creatingIssue = null }, onCreated = { url ->
@@ -35,7 +35,7 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
         })
     }
     editing?.let { item ->
-        WorkEditor(item, onCancel = { editing = null }, onSave = { update(it); editing = null })
+        WorkEditor(item, onCancel = { editing = null }, onSave = { if (update(it)) editing = null })
     }
     deleting?.let { item ->
         AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Delete work item?") },
@@ -45,6 +45,7 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Work & ideas", style = MaterialTheme.typography.titleLarge)
+        vm.portfolioError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Text("Local items can link to a GitHub issue or pull request.", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { editing = WorkItem(UUID.randomUUID().toString(), "") }, modifier = Modifier.fillMaxWidth()) {
