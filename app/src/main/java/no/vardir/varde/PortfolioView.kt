@@ -17,7 +17,7 @@ import java.util.UUID
 @Composable
 internal fun PortfolioView(
     vm: Workspace, initialProductId: String? = null, onBack: () -> Unit,
-    onOpenRepo: (Repo, String) -> Unit
+    onOpenRepo: (Repo, String, String) -> Unit
 ) {
     var selectedId by rememberSaveable { mutableStateOf(initialProductId) }
     var editing by remember { mutableStateOf<Product?>(null) }
@@ -85,14 +85,14 @@ internal fun PortfolioView(
                 if (available.isEmpty()) item { Text("No visible repositories linked.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (missing > 0) item { Text("$missing linked repositories are hidden or unavailable.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 items(available, key = { it.id }) { repo ->
-                    OutlinedCard(onClick = { onOpenRepo(repo, "overview") }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedCard(onClick = { onOpenRepo(repo, "overview", selected.id) }, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp)) {
                             Text(repo.name, style = MaterialTheme.typography.titleMedium)
                             Text(repo.owner, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
-                item { ProductActivity(vm, selected, available, onOpenRepo) }
+                item { ProductActivity(vm, selected, available) { repo, route -> onOpenRepo(repo, route, selected.id) } }
             }
         }
     }
