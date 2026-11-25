@@ -13,7 +13,7 @@ class PortfolioTest {
     }
     @Test fun unknownVersionFailsInsteadOfOverwritingData() {
         assertThrows(IllegalArgumentException::class.java) {
-            decodeProducts("""{"version":2,"products":[]}""")
+            decodeProducts("""{"version":3,"products":[]}""")
         }
     }
     @Test fun moveHonorsBoundariesAndPreservesUnavailableRepositories() {
