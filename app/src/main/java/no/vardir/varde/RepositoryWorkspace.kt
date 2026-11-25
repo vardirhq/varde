@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
@@ -29,6 +30,13 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var generation by remember { mutableIntStateOf(0) }
+    val history = remember(repo.id) { mutableStateListOf<String>() }
+    var showHandover by remember { mutableStateOf(false) }
+    var confirmRerun by remember { mutableStateOf(false) }
+    var rerunning by remember { mutableStateOf(false) }
+    var rerunMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    fun navigate(next: String) { history.add(page); page = next; rerunMessage = null }
     val uri = LocalUriHandler.current
     val base = repoApi(repo)
     val endpoint = when {
@@ -45,7 +53,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         page.startsWith("checks:") -> "$base/commits/" + pathPart(page.removePrefix("checks:")) + "/check-runs?per_page=100"
         page.startsWith("statuses:") -> "$base/commits/" + pathPart(page.removePrefix("statuses:")) + "/status"
         page.startsWith("run:") -> "$base/actions/runs/" + page.removePrefix("run:") + "/jobs?per_page=100"
-        page.startsWith("log:") -> "$base/actions/jobs/" + page.removePrefix("log:") + "/logs"
+        page.startsWith("log:") -> "$base/actions/jobs/" + page.removePrefix("log:").substringBefore(':') + "/logs"
         else -> base
     }
     LaunchedEffect(repo.id, page, generation) {
@@ -56,6 +64,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         finally { loading = false }
     }
     fun back() {
+        if (history.isNotEmpty()) { page = history.removeAt(history.lastIndex); return }
         page = when {
             page == "overview" -> { onBack(); return }
             page.startsWith("changes:") || page.startsWith("comments:") || page.startsWith("reviewcomments:") -> "pull:" + page.substringAfter(':')
@@ -68,6 +77,26 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         }
     }
     androidx.activity.compose.BackHandler { back() }
+    if (showHandover) HandoverDialog(vm, repo, page, payload) { showHandover = false }
+    if (confirmRerun) AlertDialog(
+        onDismissRequest = { confirmRerun = false },
+        title = { Text("Rerun failed jobs?") },
+        text = { Text("GitHub will rerun failed jobs in this workflow run. This may consume Actions minutes.") },
+        confirmButton = { TextButton(onClick = {
+            confirmRerun = false
+            val runId = page.substringAfter(':').toLongOrNull()
+            if (runId != null) scope.launch {
+                rerunning = true
+                try {
+                    vm.rerunFailedJobs(repo, runId)
+                    rerunMessage = "GitHub accepted the rerun. Refresh to see the new attempt."
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { rerunMessage = e.message ?: "Rerun failed." }
+                finally { rerunning = false }
+            }
+        }) { Text("Rerun failed jobs") } },
+        dismissButton = { TextButton(onClick = { confirmRerun = false }) { Text("Cancel") } }
+    )
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -96,7 +125,11 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                     style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(14.dp))
             }
+            if (page.startsWith("pull:") || page.startsWith("log:") || page.startsWith("run:") || page.startsWith("changes:")) item {
+                OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare agent handover") }
+            }
             if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            rerunMessage?.let { message -> item { WorkspaceNotice("Workflow rerun", message) } }
             error?.let { message -> item {
                 WorkspaceNotice("Couldn't load this view", message, isError = true)
             } }
@@ -105,7 +138,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                     WorkspaceNotice("Offline copy", "Saved ${DateFormat.getDateTimeInstance().format(Date(response.savedAt))}")
                 }
                 if (page.startsWith("log:")) {
-                    item { WorkspaceTextBlock("Job log", response.body, monospace = true) }
+                    item { JobLogPanel(response.body) }
                 } else {
                     val result = runCatching { workspaceLinks(page, response.body) }
                     val links = result.getOrDefault(emptyList())
@@ -119,13 +152,21 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                     if (links.isEmpty() && result.isSuccess) item {
                         WorkspaceNotice("Nothing here yet", "There is nothing to show in this view.")
                     }
+                    if (page.startsWith("pull:")) item { PullSummary(response.body) }
+                    if (page.startsWith("run:") && hasFailedJobs(response.body)) item {
+                        OutlinedButton(onClick = { confirmRerun = true }, enabled = !rerunning,
+                            modifier = Modifier.fillMaxWidth()) { Text(if (rerunning) "Requesting rerun…" else "Rerun failed jobs") }
+                    }
                     items(links) { link ->
                         val canOpen = link.route.isNotBlank()
                         val longContent = page.startsWith("changes:") ||
                             (page.startsWith("files:") && link.route.startsWith("https://github.com/")) ||
                             page.startsWith("comments:") || page.startsWith("reviewcomments:") ||
                             (page.startsWith("pull:") && !canOpen)
-                        if (longContent) {
+                        if (page.startsWith("changes:")) {
+                            DiffCard(link.title, link.subtitle, onOpen =
+                                if (link.route.startsWith("https://github.com/")) ({ uri.openUri(link.route) }) else null)
+                        } else if (longContent) {
                             WorkspaceTextBlock(link.title, link.subtitle,
                                 monospace = page.startsWith("changes:") || page.startsWith("files:"),
                                 markdown = page.startsWith("pull:") || page.startsWith("comments:") ||
@@ -137,7 +178,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                             WorkspaceRow(link, onClick = if (!canOpen) null else {
                                 {
                                     if (link.route.startsWith("https://github.com/")) uri.openUri(link.route)
-                                    else page = link.route
+                                    else navigate(link.route)
                                 }
                             })
                         }
@@ -252,7 +293,9 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
         val checks = parsed.optJSONArray("check_runs") ?: JSONArray()
         return (0 until checks.length()).map { i ->
             val o = checks.getJSONObject(i)
-            WorkspaceLink(jsonText(o, "name"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}", jsonText(o, "html_url"))
+            val target = jsonText(o, "details_url").ifBlank { jsonText(o, "html_url") }
+            WorkspaceLink(jsonText(o, "name"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}",
+                actionJobRoute(target) ?: target)
         }.ifEmpty { listOf(WorkspaceLink("No check runs", "No check runs were returned for this commit.", "")) }
     }
     if (page.startsWith("statuses:") && parsed is JSONObject) {
@@ -272,7 +315,7 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
             page == "issues" -> WorkspaceLink("#${o.optInt("number")} ${jsonText(o, "title")}", "Open issue", jsonText(o, "html_url"))
             page == "pulls" -> WorkspaceLink("#${o.optInt("number")} ${jsonText(o, "title")}", jsonText(o, "state"), "pull:${o.optInt("number")}")
             page == "runs" -> WorkspaceLink(jsonText(o, "name", "Workflow"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}", "run:${o.optLong("id")}")
-            page.startsWith("run:") -> WorkspaceLink(jsonText(o, "name", "Job"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}", "log:${o.optLong("id")}")
+            page.startsWith("run:") -> WorkspaceLink(jsonText(o, "name", "Job"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}", "log:${o.optLong("id")}:${page.substringAfter(':')}")
             page.startsWith("files:") -> WorkspaceLink(jsonText(o, "name"), jsonText(o, "type"), "files:${jsonText(o, "path")}")
             page.startsWith("changes:") -> WorkspaceLink(jsonText(o, "filename"), jsonText(o, "patch", "Patch unavailable"), jsonText(o, "blob_url"))
             page.startsWith("comments:") || page.startsWith("reviewcomments:") -> WorkspaceLink(o.optJSONObject("user")?.optString("login").orEmpty(), jsonText(o, "body"), jsonText(o, "html_url"))
