@@ -47,7 +47,7 @@ private fun MarkdownChildren(parent: Node) {
             }
             is ListBlock -> {
                 var item = current.firstChild
-                var number = if (current is OrderedList) current.markerStartNumber else 1
+                var number = if (current is OrderedList) current.startNumber else 1
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     while (item != null) {
                         val listItem = item
