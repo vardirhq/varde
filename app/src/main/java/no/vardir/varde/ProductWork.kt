@@ -23,6 +23,7 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
     var editing by remember { mutableStateOf<WorkItem?>(null) }
     var deleting by remember { mutableStateOf<WorkItem?>(null) }
     var creatingIssue by remember { mutableStateOf<WorkItem?>(null) }
+    var uncertainIssues by remember { mutableStateOf<Set<String>>(emptySet()) }
     val uriHandler = LocalUriHandler.current
     fun update(item: WorkItem): Boolean {
         val items = if (product.work.any { it.id == item.id }) product.work.map { if (it.id == item.id) item else it }
@@ -30,7 +31,8 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
         return vm.saveProduct(product.copy(work = items))
     }
     creatingIssue?.let { item ->
-        ProductIssueDialog(vm, item, repos, onClose = { creatingIssue = null }, onCreated = { url ->
+        ProductIssueDialog(vm, item, repos, onClose = { creatingIssue = null },
+            onUncertain = { uncertainIssues = uncertainIssues + item.id }, onCreated = { url ->
             vm.saveProduct(product.copy(work = product.work.map { if (it.id == item.id) it.copy(url = url, kind = "Task") else it }))
         })
     }
@@ -65,7 +67,9 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
                         }
                     }
                     if (item.details.isNotBlank()) Text(item.details, style = MaterialTheme.typography.bodyMedium)
-                    if (item.url.isBlank() && repos.isNotEmpty()) TextButton(onClick = { creatingIssue = item }) {
+                    if (item.id in uncertainIssues) Text("Check GitHub, then reopen this product before retrying.",
+                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    if (item.url.isBlank() && repos.isNotEmpty()) TextButton(onClick = { creatingIssue = item }, enabled = item.id !in uncertainIssues) {
                         Text("Create GitHub issue…")
                     }
                     if (item.url.isNotBlank() && validWorkLink(item.url)) TextButton(onClick = { runCatching { uriHandler.openUri(item.url.trim()) } }) { Text("Open linked GitHub item") }
