@@ -172,6 +172,17 @@ class Workspace(application: Application) : AndroidViewModel(application) {
         return persistProducts(if (existing) products.map { if (it.id == sanitized.id) sanitized else it } else products + sanitized)
     }
     internal fun deleteProduct(id: String): Boolean = persistProducts(products.filterNot { it.id == id })
+    internal fun portfolioBackup(): String {
+        check(user.isNotBlank() && portfolioError == null) { "Portfolio is unavailable." }
+        return encodePortfolioBackup(user, products)
+    }
+    internal fun restorePortfolio(raw: String, expectedUser: String) {
+        check(user.isNotBlank() && user.equals(expectedUser, ignoreCase = true)) { "Account changed; choose the backup again." }
+        val restored = decodePortfolioBackup(raw, user)
+        check(portfolioPrefs.edit().putString(organizationKey(), encodeProducts(restored)).commit()) { "Could not save restored portfolio." }
+        products = restored
+        portfolioError = null
+    }
     fun togglePin(repoId: Long) {
         if (user.isBlank()) return
         pinnedRepos = if (repoId in pinnedRepos) pinnedRepos - repoId else pinnedRepos + repoId
