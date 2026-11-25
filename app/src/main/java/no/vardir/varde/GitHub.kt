@@ -56,6 +56,17 @@ class GitHub(private val clientId: String) {
     internal suspend fun get(path: String, token: String): String = request(Request.Builder()
         .url("https://api.github.com/$path").header("Authorization","Bearer $token")
         .header("Accept","application/vnd.github+json").header("X-GitHub-Api-Version","2022-11-28").build())
+    internal suspend fun rerunFailedJobs(repo: Repo, runId: Long, token: String) = withContext(Dispatchers.IO) {
+        val path = repoApi(repo) + "/actions/runs/$runId/rerun-failed-jobs"
+        val request = Request.Builder().url("https://api.github.com/$path")
+            .header("Authorization", "Bearer $token").header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .post(RequestBody.create(null, ByteArray(0))).build()
+        http.newCall(request).execute().use { response ->
+            if (response.code == 401) throw Unauthorized()
+            check(response.isSuccessful) { "GitHub could not rerun failed jobs (HTTP ${response.code}). Check Actions permissions and run status." }
+        }
+    }
     internal suspend fun jobLog(path: String, token: String): String = withContext(Dispatchers.IO) {
         // OkHttp strips the Authorization header when GitHub redirects to a different host.
         val client = http.newBuilder().followRedirects(true).followSslRedirects(false).build()

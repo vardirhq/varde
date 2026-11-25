@@ -164,6 +164,10 @@ class Workspace(application: Application) : AndroidViewModel(application) {
         if (user.isBlank()) throw IllegalStateException("Your account is not loaded yet. Refresh and try again.")
         return WorkspaceData(appContext, github, user, access).load(path)
     }
+    internal suspend fun rerunFailedJobs(repo: Repo, runId: Long) {
+        val access = token ?: throw IllegalStateException("Sign in to rerun jobs.")
+        github.rerunFailedJobs(repo, runId, access)
+    }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
     private fun reset() { snapshot.clearLastUser(); snapshotTime = null; feedGeneration++; feedJob?.cancel(); feedItems = emptyList(); feedIncomplete = false; feedLoading = false; store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); attention = emptyList(); attentionLoaded = false; attentionError = null }
