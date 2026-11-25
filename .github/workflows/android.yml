@@ -27,6 +27,8 @@ jobs:
         run: gradle :app:testDebugUnitTest :app:assembleDebug
         env:
           GH_CLIENT_ID: ${{ secrets.GH_CLIENT_ID }}
+      - name: Verify debug APK signing
+        run: ${ANDROID_HOME}/build-tools/35.0.0/apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: varde-debug

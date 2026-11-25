@@ -53,9 +53,24 @@ class GitHub(private val clientId: String) {
         }
         error("Code expired. Try again.")
     }
-    private suspend fun get(path: String, token: String): String = request(Request.Builder()
+    internal suspend fun get(path: String, token: String): String = request(Request.Builder()
         .url("https://api.github.com/$path").header("Authorization","Bearer $token")
         .header("Accept","application/vnd.github+json").header("X-GitHub-Api-Version","2022-11-28").build())
+    internal suspend fun jobLog(path: String, token: String): String = withContext(Dispatchers.IO) {
+        // OkHttp strips the Authorization header when GitHub redirects to a different host.
+        val client = http.newBuilder().followRedirects(true).followSslRedirects(false).build()
+        val req = Request.Builder().url("https://api.github.com/$path")
+            .header("Authorization", "Bearer $token").build()
+        client.newCall(req).execute().use { response ->
+            if (response.code == 401) throw Unauthorized()
+            check(response.isSuccessful) { "Unable to load job log (HTTP ${response.code})" }
+            val source = response.body?.source() ?: error("Empty job log")
+            val limit = 200_000L
+            source.request(limit + 1)
+            val truncated = source.buffer.size > limit
+            source.readUtf8(minOf(source.buffer.size, limit)) + if (truncated) "\\n\\n[Log truncated]" else ""
+        }
+    }
     suspend fun login(token: String): String = JSONObject(get("user",token)).getString("login")
     suspend fun assignedWork(token: String): List<AttentionItem> {
         val data = JSONArray(get("issues?filter=assigned&state=open&per_page=100", token))

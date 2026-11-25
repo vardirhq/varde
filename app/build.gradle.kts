@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -16,6 +18,27 @@ android {
         require(clientId.matches(Regex("[A-Za-z0-9_]*"))) { "Invalid GitHub client ID" }
         buildConfigField("String", "GH_CLIENT_ID", "\"$clientId\"")
     }
+    // Public debug-only key: stable across CI runners, never use for release signing.
+    val stableDebugKeystore = layout.buildDirectory.file("signing/varde-debug.keystore")
+    val prepareDebugKeystore = tasks.register("prepareDebugKeystore") {
+        val encoded = layout.projectDirectory.file("debug-keystore.b64")
+        inputs.file(encoded)
+        outputs.file(stableDebugKeystore)
+        doLast {
+            val output = stableDebugKeystore.get().asFile
+            output.parentFile.mkdirs()
+            output.writeBytes(Base64.getMimeDecoder().decode(encoded.asFile.readText()))
+        }
+    }
+    signingConfigs {
+        getByName("debug") {
+            storeFile = stableDebugKeystore.get().asFile
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+    tasks.matching { it.name.startsWith("validateSigning") }.configureEach { dependsOn(prepareDebugKeystore) }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
@@ -29,4 +52,5 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

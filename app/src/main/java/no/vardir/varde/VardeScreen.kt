@@ -54,6 +54,12 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 
 @Composable
 fun Varde(vm: Workspace = viewModel()) {
+    var selectedRepo by remember { mutableStateOf<Repo?>(null) }
+    var selectedPage by remember { mutableStateOf("overview") }
+    selectedRepo?.let { repo ->
+        RepositoryWorkspace(vm, repo, selectedPage) { selectedRepo = null; selectedPage = "overview" }
+        return
+    }
     val uri = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
@@ -64,10 +70,19 @@ fun Varde(vm: Workspace = viewModel()) {
     var ownersOpen by remember { mutableStateOf(false) }
     var exclusionQuery by rememberSaveable { mutableStateOf("") }
     val includedRepos = includedRepositories(vm.repos, vm.excludedRepos)
-    val includedWork = includedAttention(vm.attention, vm.excludedRepos)
-    val visible = filterRepositories(includedRepos, query, owner, showArchived)
+    var groupingRepo by remember { mutableStateOf<Repo?>(null) }
+    var groupInput by remember { mutableStateOf("") }
+    val sortedRepos = includedRepos.sortedWith(compareBy<Repo> { it.id !in vm.pinnedRepos }.thenBy { vm.repoGroups[it.id] ?: "\uFFFF" })
+    val includedWork = includedAttention(vm.feedItems + vm.attention, vm.excludedRepos)
+    val visible = filterRepositories(sortedRepos, query, owner, showArchived)
     val manageableRepos = vm.repos.filter {
         it.name.contains(exclusionQuery, true) || it.owner.contains(exclusionQuery, true)
+    }
+    groupingRepo?.let { repo ->
+        AlertDialog(onDismissRequest = { groupingRepo = null }, title = { Text("Group ${repo.name}") },
+            text = { OutlinedTextField(groupInput, { groupInput = it }, label = { Text("Group name") }, singleLine = true) },
+            confirmButton = { TextButton(onClick = { vm.setGroup(repo.id, groupInput); groupingRepo = null }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { groupingRepo = null }) { Text("Cancel") } })
     }
     Scaffold(
         containerColor = Ink,
@@ -85,6 +100,7 @@ fun Varde(vm: Workspace = viewModel()) {
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { VardeHeader() }
+            vm.snapshotTime?.let { time -> item { Text("Saved projects · ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(time))}", Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.primary) } }
             if (vm.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) }
             vm.error?.let { message -> item { Text(message, Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error) } }
             if (!vm.signedIn) {
@@ -112,14 +128,26 @@ fun Varde(vm: Workspace = viewModel()) {
                 Tab.Home -> {
                     item { Hero(vm.user) }
                     item { SectionHeading("Needs attention", "See all") { tab = Tab.Inbox } }
+                    if (vm.feedLoading) item { Text("Checking repositories for attention…", Modifier.padding(horizontal = 20.dp), color = Muted, style = MaterialTheme.typography.bodySmall) }
+                    if (vm.feedIncomplete) item { Text("Some attention data may be missing due to permissions, rate limits, or result limits.", Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     if (vm.attentionError != null) item { InfoPanel("Couldn't load assigned work", vm.attentionError!!) }
                     else if (!vm.attentionLoaded && vm.busy) item { InfoPanel("Loading assigned work", "Checking GitHub for open issues and pull requests assigned to you.") }
                     else if (!vm.attentionLoaded) item { InfoPanel("Assigned work not loaded", "Refresh to check GitHub for assigned work.") }
-                    else if (includedWork.isEmpty()) item { InfoPanel("No assigned work", "Open issues and pull requests assigned to you will appear here.") }
-                    items(includedWork.take(3), key = { it.url }) { entry -> AttentionCard(entry) { uri.openUri(entry.url) } }
+                    else if (includedWork.isEmpty() && !vm.feedLoading && !vm.feedIncomplete) item { InfoPanel("No assigned work", "Review requests, failed checks, workflows, and assigned work will appear here.") }
+                    items(includedWork.take(3), key = { "${it.kind}:${it.url}" }) { entry -> AttentionCard(entry) {
+                        val target = includedRepos.firstOrNull { it.id == entry.repositoryId }
+                        val id = entry.url.substringAfterLast('/')
+                        val route = when {
+                            entry.kind == "Latest workflow run failed" && id.toLongOrNull() != null -> "run:$id"
+                            (entry.kind == "PR checks failing" || entry.kind == "Review requested" || entry.kind == "Pull request") && id.toIntOrNull() != null -> "pull:$id"
+                            else -> null
+                        }
+                        if (target != null && route != null) { selectedPage = route; selectedRepo = target }
+                        else uri.openUri(entry.url)
+                    } }
                     item { SectionHeading("Your projects", "See all") { tab = Tab.Projects } }
                     if (includedRepos.isEmpty() && !vm.busy) item { InfoPanel("No visible repositories", "Choose repositories in Settings or refresh GitHub.") }
-                    items(dashboardRepositories(includedRepos), key = { it.id }) { repo -> RepoCard(repo) { uri.openUri(repo.url) } }
+                    items(dashboardRepositories(sortedRepos), key = { it.id }) { repo -> RepoCard(repo) { selectedPage = "overview"; selectedRepo = repo } }
                 }
                 Tab.Projects -> {
                     item { PageTitle("Your projects", "Repositories accessible on GitHub") }
@@ -139,16 +167,38 @@ fun Varde(vm: Workspace = viewModel()) {
                         Text("Archived", Modifier.clickable { showArchived = !showArchived })
                     } }
                     if (visible.isEmpty() && !vm.busy) item { InfoPanel("No matching repositories", "Try another search or filter.") }
-                    items(visible, key = { it.id }) { repo -> RepoCard(repo) { uri.openUri(repo.url) } }
+                    items(visible, key = { it.id }) { repo ->
+                        Column {
+                            RepoCard(repo) { selectedPage = "overview"; selectedRepo = repo }
+                            Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(onClick = { vm.togglePin(repo.id) }) { Text(if (repo.id in vm.pinnedRepos) "Unpin" else "Pin") }
+                                TextButton(onClick = { groupInput = vm.repoGroups[repo.id].orEmpty(); groupingRepo = repo }) {
+                                    Text(vm.repoGroups[repo.id]?.let { "Group: $it" } ?: "Set group")
+                                }
+                            }
+                        }
+                    }
                 }
                 Tab.Inbox -> {
                     item { PageTitle("Inbox", "Open issues and pull requests assigned to you") }
-                    item { Text("Showing up to 100 assigned items from GitHub.", Modifier.padding(horizontal = 20.dp), color = Muted, style = MaterialTheme.typography.bodySmall) }
+                    item { Text("GitHub data is refreshed when the app refreshes.", Modifier.padding(horizontal = 20.dp), color = Muted, style = MaterialTheme.typography.bodySmall) }
+                    if (vm.feedLoading) item { Text("Checking repositories for attention…", Modifier.padding(horizontal = 20.dp), color = Muted, style = MaterialTheme.typography.bodySmall) }
+                    if (vm.feedIncomplete) item { Text("Some attention data may be missing due to permissions, rate limits, or result limits.", Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     if (vm.attentionError != null) item { InfoPanel("Couldn't load assigned work", vm.attentionError!!) }
                     else if (!vm.attentionLoaded && vm.busy) item { InfoPanel("Loading", "Checking GitHub for assigned work.") }
                     else if (!vm.attentionLoaded) item { InfoPanel("Assigned work not loaded", "Refresh to check GitHub for assigned work.") }
-                    else if (includedWork.isEmpty()) item { InfoPanel("Nothing assigned", "Your assigned issues and pull requests will appear here.") }
-                    items(includedWork, key = { it.url }) { entry -> AttentionCard(entry) { uri.openUri(entry.url) } }
+                    else if (includedWork.isEmpty() && !vm.feedLoading && !vm.feedIncomplete) item { InfoPanel("Nothing assigned", "Your assigned issues and pull requests will appear here.") }
+                    items(includedWork, key = { "${it.kind}:${it.url}" }) { entry -> AttentionCard(entry) {
+                        val target = includedRepos.firstOrNull { it.id == entry.repositoryId }
+                        val id = entry.url.substringAfterLast('/')
+                        val route = when {
+                            entry.kind == "Latest workflow run failed" && id.toLongOrNull() != null -> "run:$id"
+                            (entry.kind == "PR checks failing" || entry.kind == "Review requested" || entry.kind == "Pull request") && id.toIntOrNull() != null -> "pull:$id"
+                            else -> null
+                        }
+                        if (target != null && route != null) { selectedPage = route; selectedRepo = target }
+                        else uri.openUri(entry.url)
+                    } }
                 }
                 Tab.Settings -> {
                     item { PageTitle("Settings", "Your GitHub connection") }
@@ -253,7 +303,7 @@ fun Varde(vm: Workspace = viewModel()) {
             }
             Text(repo.owner + if (repo.archived) " · Archived" else "", color = Muted, style = MaterialTheme.typography.labelLarge)
             if (repo.description.isNotBlank()) Text(repo.description, color = Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 3)
-            Text("Open on GitHub  ›", color = Amber, style = MaterialTheme.typography.labelLarge)
+            Text("Open workspace  ›", color = Amber, style = MaterialTheme.typography.labelLarge)
         }
     }
 }
