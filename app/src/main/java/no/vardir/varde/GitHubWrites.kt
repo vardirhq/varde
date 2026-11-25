@@ -5,6 +5,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
+internal class WriteOutcomeUnknown(cause: Throwable) :
+    Exception("Connection interrupted. The action may have completed; close and refresh GitHub before trying again.", cause)
+
 internal enum class WriteKind { COMMENT, APPROVE, REQUEST_CHANGES, MERGE }
 
 internal data class WriteAction(
