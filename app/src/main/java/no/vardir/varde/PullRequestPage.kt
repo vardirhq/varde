@@ -90,11 +90,10 @@ internal fun PullRequestPage(
             cached -> Notice("Actions unavailable offline", "Reconnect and refresh before submitting GitHub actions.")
             !pr.open -> OutlinedButton(onClick = { onAction(WriteKind.COMMENT) }, modifier = Modifier.fillMaxWidth()) { Text("Add comment") }
             else -> {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { onAction(WriteKind.COMMENT) }, modifier = Modifier.weight(1f)) { Text("Comment") }
-                    OutlinedButton(onClick = { onAction(WriteKind.REQUEST_CHANGES) }, modifier = Modifier.weight(1f)) { Text("Request changes") }
-                }
+                // Full-width buttons keep labels on one line even at large font sizes.
                 OutlinedButton(onClick = { onAction(WriteKind.APPROVE) }, modifier = Modifier.fillMaxWidth()) { Text("Approve") }
+                OutlinedButton(onClick = { onAction(WriteKind.REQUEST_CHANGES) }, modifier = Modifier.fillMaxWidth()) { Text("Request changes") }
+                OutlinedButton(onClick = { onAction(WriteKind.COMMENT) }, modifier = Modifier.fillMaxWidth()) { Text("Comment") }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 // Merge is never hidden (branch protection is GitHub's call), but it is only emphasized when the evidence says it's ready.
                 if (verdict.readyToMerge && !pr.draft) Button(onClick = { onAction(WriteKind.MERGE) }, modifier = Modifier.fillMaxWidth()) { Text("Merge…") }
