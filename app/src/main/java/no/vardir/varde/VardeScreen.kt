@@ -63,7 +63,7 @@ fun Varde(vm: Workspace = viewModel()) {
     }
     if (portfolioVisible) {
         PortfolioView(vm, initialProductId = portfolioStart, onBack = { portfolioVisible = false; portfolioStart = null },
-            onOpenRepo = { repo, page -> selectedPage = page; selectedRepo = repo })
+            onOpenRepo = { repo, page, productId -> portfolioStart = productId; selectedPage = page; selectedRepo = repo })
         return
     }
     val uri = LocalUriHandler.current
