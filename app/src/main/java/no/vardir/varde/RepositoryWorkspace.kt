@@ -152,7 +152,10 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                     if (links.isEmpty() && result.isSuccess) item {
                         WorkspaceNotice("Nothing here yet", "There is nothing to show in this view.")
                     }
-                    if (page.startsWith("pull:")) item { PullSummary(response.body) }
+                    if (page.startsWith("pull:")) {
+                        item { PullSummary(response.body) }
+                        item { PullChecks(vm, repo, response.body) { navigate(it) } }
+                    }
                     if (page.startsWith("run:") && hasFailedJobs(response.body)) item {
                         OutlinedButton(onClick = { confirmRerun = true }, enabled = !rerunning,
                             modifier = Modifier.fillMaxWidth()) { Text(if (rerunning) "Requesting rerun…" else "Rerun failed jobs") }
