@@ -1,6 +1,8 @@
 package no.vardir.varde
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -25,7 +27,7 @@ internal fun ProductIssueDialog(vm: Workspace, item: WorkItem, repos: List<Repo>
     val repo = repos.firstOrNull { it.id == repoId }
     AlertDialog(onDismissRequest = { if (!busy) onClose() }, title = { Text("Create GitHub issue") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (created != null) {
                     Text("Issue created, but it could not be saved to the product. Open it and copy its link before closing.")
                     TextButton(onClick = { runCatching { uri.openUri(created.orEmpty()) } }) { Text(created.orEmpty()) }
