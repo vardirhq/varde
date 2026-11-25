@@ -24,9 +24,9 @@ class GitHub(private val clientId: String) {
         val form = FormBody.Builder().apply { fields.forEach { (k,v) -> add(k,v) } }.build()
         return JSONObject(request(Request.Builder().url("https://github.com/login/$path").header("Accept","application/json").post(form).build()))
     }
-    suspend fun start(privateAccess: Boolean): DeviceCode {
+    suspend fun start(privateAccess: Boolean, publicWrite: Boolean): DeviceCode {
         check(clientId.isNotBlank()) { "This build has no GitHub client ID." }
-        val data = post("device/code", mapOf("client_id" to clientId, "scope" to if (privateAccess) "repo read:org" else "read:org"))
+        val data = post("device/code", mapOf("client_id" to clientId, "scope" to if (privateAccess) "repo read:org" else if (publicWrite) "public_repo read:org" else "read:org"))
         return DeviceCode(data.getString("device_code"), data.getString("user_code"), data.optLong("interval",5).coerceAtLeast(5), data.getLong("expires_in"))
     }
     suspend fun authorize(code: DeviceCode, onConnectionProblem: () -> Unit = {}, onReconnected: () -> Unit = {}): String {
@@ -56,6 +56,32 @@ class GitHub(private val clientId: String) {
     internal suspend fun get(path: String, token: String): String = request(Request.Builder()
         .url("https://api.github.com/$path").header("Authorization","Bearer $token")
         .header("Accept","application/vnd.github+json").header("X-GitHub-Api-Version","2022-11-28").build())
+    internal suspend fun submitWrite(repo: Repo, action: WriteAction, token: String) = withContext(Dispatchers.IO) {
+        val request = buildWriteRequest(repo, action, token)
+        try {
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val reason = when (response.code) {
+                        401 -> "Your GitHub session has expired. Sign in again."
+                        403 -> "GitHub denied this action. Check repository permissions and branch rules. If needed, sign out and reconnect with write access."
+                        404 -> "GitHub could not access this item. Check repository permissions and token scopes."
+                        405, 409 -> "GitHub rejected the action because the pull request changed or cannot be merged. Refresh and review it again."
+                        422 -> "GitHub could not accept this action. Check the review, branch rules, and merge method."
+                        else -> "GitHub rejected the action (HTTP ${response.code})."
+                    }
+                    throw IllegalStateException(reason)
+                }
+                if (action.kind == WriteKind.MERGE) {
+                    val body = response.body?.string().orEmpty()
+                    check(runCatching { JSONObject(body).optBoolean("merged", false) }.getOrDefault(false)) {
+                        "GitHub did not confirm the merge. Refresh the pull request before trying again."
+                    }
+                }
+            }
+        } catch (e: java.io.IOException) {
+            throw WriteOutcomeUnknown(e)
+        }
+    }
     internal suspend fun rerunFailedJobs(repo: Repo, runId: Long, token: String) = withContext(Dispatchers.IO) {
         val path = repoApi(repo) + "/actions/runs/$runId/rerun-failed-jobs"
         val request = Request.Builder().url("https://api.github.com/$path")

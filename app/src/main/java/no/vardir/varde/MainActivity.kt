@@ -79,8 +79,8 @@ class Workspace(application: Application) : AndroidViewModel(application) {
             finally { busy = false; code = null }
         }
     }
-    fun signIn(privateAccess: Boolean) = runTask {
-        val device = github.start(privateAccess)
+    fun signIn(privateAccess: Boolean, publicWrite: Boolean) = runTask {
+        val device = github.start(privateAccess, publicWrite)
         code = device.userCode
         val access = github.authorize(device,
             onConnectionProblem = { error = "Can't reach GitHub. Check your connection; retrying until the code expires." },
@@ -167,6 +167,10 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     internal suspend fun rerunFailedJobs(repo: Repo, runId: Long) {
         val access = token ?: throw IllegalStateException("Sign in to rerun jobs.")
         github.rerunFailedJobs(repo, runId, access)
+    }
+    internal suspend fun submitWrite(repo: Repo, action: WriteAction) {
+        val access = token ?: throw IllegalStateException("Sign in before submitting an action.")
+        github.submitWrite(repo, action, access)
     }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
