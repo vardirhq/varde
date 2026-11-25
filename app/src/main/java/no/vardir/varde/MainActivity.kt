@@ -215,6 +215,10 @@ class Workspace(application: Application) : AndroidViewModel(application) {
         val access = token ?: throw IllegalStateException("Sign in before submitting an action.")
         github.submitWrite(repo, action, access)
     }
+    internal suspend fun createProductIssue(repo: Repo, title: String, body: String): String {
+        val access = token ?: throw IllegalStateException("Sign in to create an issue.")
+        return github.createIssue(repo, title, body, access)
+    }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
     private fun reset() { snapshot.clearLastUser(); snapshotTime = null; feedGeneration++; feedJob?.cancel(); feedItems = emptyList(); feedIncomplete = false; feedLoading = false; store.clear(); token = null; signedIn = false; user = ""; repos = emptyList(); excludedRepos = emptySet(); pinnedRepos = emptySet(); repoGroups = emptyMap(); products = emptyList(); portfolioError = null; attention = emptyList(); attentionLoaded = false; attentionError = null }
