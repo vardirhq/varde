@@ -82,6 +82,17 @@ class GitHub(private val clientId: String) {
             throw WriteOutcomeUnknown(e)
         }
     }
+    internal suspend fun createIssue(repo: Repo, title: String, body: String, token: String): String = withContext(Dispatchers.IO) {
+        val request = buildCreateIssueRequest(repo, title, body, token)
+        try {
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) error("GitHub rejected issue creation (HTTP ${response.code}). Check access and permissions.")
+                val url = runCatching { JSONObject(response.body?.string().orEmpty()).optString("html_url") }.getOrDefault("")
+                if (!validWorkLink(url) || url.isBlank()) throw WriteOutcomeUnknown(IllegalStateException("Invalid issue response"))
+                url
+            }
+        } catch (e: java.io.IOException) { throw WriteOutcomeUnknown(e) }
+    }
     internal suspend fun rerunFailedJobs(repo: Repo, runId: Long, token: String) = withContext(Dispatchers.IO) {
         val path = repoApi(repo) + "/actions/runs/$runId/rerun-failed-jobs"
         val request = Request.Builder().url("https://api.github.com/$path")

@@ -172,6 +172,19 @@ class Workspace(application: Application) : AndroidViewModel(application) {
         return persistProducts(if (existing) products.map { if (it.id == sanitized.id) sanitized else it } else products + sanitized)
     }
     internal fun deleteProduct(id: String): Boolean = persistProducts(products.filterNot { it.id == id })
+    internal fun portfolioBackup(): String {
+        check(user.isNotBlank() && portfolioError == null) { "Portfolio is unavailable." }
+        val backup = encodePortfolioBackup(user, products)
+        check(backup.toByteArray(Charsets.UTF_8).size <= 2_000_000) { "Portfolio is too large to export safely." }
+        return backup
+    }
+    internal fun restorePortfolio(raw: String, expectedUser: String) {
+        check(user.isNotBlank() && user.equals(expectedUser, ignoreCase = true)) { "Account changed; choose the backup again." }
+        val restored = decodePortfolioBackup(raw, user)
+        check(portfolioPrefs.edit().putString(organizationKey(), encodeProducts(restored)).commit()) { "Could not save restored portfolio." }
+        products = restored
+        portfolioError = null
+    }
     fun togglePin(repoId: Long) {
         if (user.isBlank()) return
         pinnedRepos = if (repoId in pinnedRepos) pinnedRepos - repoId else pinnedRepos + repoId
@@ -203,6 +216,10 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     internal suspend fun submitWrite(repo: Repo, action: WriteAction) {
         val access = token ?: throw IllegalStateException("Sign in before submitting an action.")
         github.submitWrite(repo, action, access)
+    }
+    internal suspend fun createProductIssue(repo: Repo, title: String, body: String): String {
+        val access = token ?: throw IllegalStateException("Sign in to create an issue.")
+        return github.createIssue(repo, title, body, access)
     }
     fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }

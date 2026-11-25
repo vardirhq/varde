@@ -32,20 +32,19 @@ internal fun ProductActivity(vm: Workspace, product: Product, repos: List<Repo>,
                 Text("${repo.name} · ${entry.title}")
             }
         }
-        Text("Open pull requests", style = MaterialTheme.typography.titleSmall)
-        if (evidence != null && evidence!!.pullRequests.isEmpty()) Text(
-            if (evidence!!.notes.isEmpty()) "No open pull requests found." else "No open pull requests in the available results.",
+        Text("Across your repositories", style = MaterialTheme.typography.titleSmall)
+        if (evidence != null && evidence!!.events.isEmpty()) Text("No activity in the available results.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        evidence?.pullRequests?.forEach { entry ->
-            val repo = repos.firstOrNull { it.id == entry.repositoryId }
-            val id = entry.url.substringAfterLast('/').toIntOrNull()
-            if (repo != null && id != null) OutlinedButton(onClick = { onOpenRepo(repo, "pull:$id") }, modifier = Modifier.fillMaxWidth()) {
-                Text("${repo.name} · #$id · ${entry.title}")
+        evidence?.events?.forEach { event ->
+            val repo = repos.firstOrNull { it.id == event.repositoryId }
+            if (repo != null) OutlinedCard(onClick = { onOpenRepo(repo, event.route) }, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(event.title, style = MaterialTheme.typography.bodyMedium)
+                    Text("${event.repository} · ${event.kind}" +
+                        if (event.timestamp.isBlank()) "" else " · ${event.timestamp.take(10)}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
-        Text("Recent commits", style = MaterialTheme.typography.titleSmall)
-        evidence?.activity?.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-        if (evidence != null && evidence!!.activity.isEmpty()) Text("No commits in the available results.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

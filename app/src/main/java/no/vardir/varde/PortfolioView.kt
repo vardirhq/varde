@@ -22,6 +22,7 @@ internal fun PortfolioView(
     var selectedId by rememberSaveable { mutableStateOf(initialProductId) }
     var editing by remember { mutableStateOf<Product?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var showHandover by remember { mutableStateOf(false) }
     val selected = vm.products.firstOrNull { it.id == selectedId }
     fun back() {
         when {
@@ -31,6 +32,10 @@ internal fun PortfolioView(
         }
     }
     BackHandler { back() }
+    if (showHandover && selected != null) {
+        val chosen = selected.repositoryIds.mapNotNull { id -> vm.repos.firstOrNull { it.id == id && id !in vm.excludedRepos } }
+        ProductHandover(vm, selected, chosen) { showHandover = false }
+    }
     if (confirmDelete && selected != null) {
         AlertDialog(onDismissRequest = { confirmDelete = false },
             title = { Text("Delete ${selected.name}?") },
@@ -68,6 +73,7 @@ internal fun PortfolioView(
                     Text("Group related repositories into a product, then add your priorities and next steps.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                item { PortfolioBackupControls(vm) }
                 val sorted = vm.products.sortedWith(compareByDescending<Product> { it.focused }
                     .thenBy { when (it.priority) { "High" -> 0; "Normal" -> 1; else -> 2 } }.thenBy { it.name.lowercase() })
                 items(sorted, key = { it.id }) { product ->
@@ -75,6 +81,10 @@ internal fun PortfolioView(
                 }
             } else {
                 item { ProductOverview(selected) }
+                item {
+                    OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare product handover") }
+                }
+                item { ProductWork(vm, selected, selected.repositoryIds.mapNotNull { id -> vm.repos.firstOrNull { it.id == id && id !in vm.excludedRepos } }) }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { editing = selected }, enabled = vm.portfolioError == null) { Text("Edit") }
                     OutlinedButton(onClick = { confirmDelete = true }, enabled = vm.portfolioError == null) { Text("Delete") }
@@ -106,6 +116,8 @@ internal fun ProductCard(product: Product, onClick: () -> Unit) {
             Text((if (product.focused) "Focused · " else "") + "${product.stage} · ${product.priority} priority",
                 color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
             if (product.next.isNotBlank()) Text(product.next, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+            if (product.work.any { !it.done }) Text("${product.work.count { !it.done }} open work items",
+                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Text("${product.repositoryIds.size} linked repositories", color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall)
         }
