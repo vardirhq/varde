@@ -111,7 +111,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         if (number != null && data != null) {
             val sha = runCatching { JSONObject(data.body).optJSONObject("head")?.optString("sha").orEmpty() }.getOrDefault("")
             GitHubActionDialog(vm, repo, number, kind, sha, page.startsWith("pull:"),
-                onDismiss = { writeKind = null }, onSuccess = {
+                onDismiss = { writeKind = null; generation++ }, onSuccess = {
                     writeKind = null; writeMessage = "GitHub accepted the action."; generation++
                 })
         }
