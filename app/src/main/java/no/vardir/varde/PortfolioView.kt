@@ -84,7 +84,7 @@ internal fun PortfolioView(
                 item {
                     OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare product handover") }
                 }
-                item { ProductWork(vm, selected) }
+                item { ProductWork(vm, selected, selected.repositoryIds.mapNotNull { id -> vm.repos.firstOrNull { it.id == id && id !in vm.excludedRepos } }) }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { editing = selected }, enabled = vm.portfolioError == null) { Text("Edit") }
                     OutlinedButton(onClick = { confirmDelete = true }, enabled = vm.portfolioError == null) { Text("Delete") }
