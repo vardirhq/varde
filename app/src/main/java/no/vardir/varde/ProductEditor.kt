@@ -14,7 +14,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun ProductEditor(original: Product, repos: List<Repo>, onCancel: () -> Unit, onSave: (Product) -> Unit) {
+internal fun ProductEditor(original: Product, repos: List<Repo>, error: String?, onCancel: () -> Unit, onSave: (Product) -> Unit) {
     var name by rememberSaveable(original.id) { mutableStateOf(original.name) }
     var description by rememberSaveable(original.id) { mutableStateOf(original.description) }
     var stage by rememberSaveable(original.id) { mutableStateOf(original.stage) }
@@ -23,7 +23,7 @@ internal fun ProductEditor(original: Product, repos: List<Repo>, onCancel: () ->
     var milestones by rememberSaveable(original.id) { mutableStateOf(original.milestones) }
     var ideas by rememberSaveable(original.id) { mutableStateOf(original.ideas) }
     var focused by rememberSaveable(original.id) { mutableStateOf(original.focused) }
-    var selected by remember(original.id) { mutableStateOf(original.repositoryIds) }
+    var selected by rememberSaveable(original.id) { mutableStateOf(original.repositoryIds) }
     var query by rememberSaveable(original.id) { mutableStateOf("") }
     val remaining = repos.filter { it.id !in selected && (it.name.contains(query, true) || it.owner.contains(query, true)) }
         .sortedBy { it.name.lowercase() }
@@ -36,6 +36,7 @@ internal fun ProductEditor(original: Product, repos: List<Repo>, onCancel: () ->
                 Text("Saved on this device for your GitHub account.", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             item { OutlinedTextField(name, { name = it.take(100) }, Modifier.fillMaxWidth(), label = { Text("Product name") }, singleLine = true) }
             item { OutlinedTextField(description, { description = it }, Modifier.fillMaxWidth(), label = { Text("Description") }, minLines = 2) }
             item { ChoiceField("Stage", stage, listOf("Exploring", "Building", "Maintaining", "Paused")) { stage = it } }
@@ -78,7 +79,7 @@ internal fun ProductEditor(original: Product, repos: List<Repo>, onCancel: () ->
                 Button(onClick = { onSave(original.copy(name = name, description = description, stage = stage,
                     priority = priority, next = next, milestones = milestones, ideas = ideas,
                     repositoryIds = selected, focused = focused)) },
-                    enabled = name.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save product") }
+                    enabled = name.isNotBlank() && error == null, modifier = Modifier.fillMaxWidth()) { Text("Save product") }
             }
         }
     }
