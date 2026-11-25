@@ -27,11 +27,19 @@ internal fun ProductEditor(original: Product, repos: List<Repo>, error: String?,
     var query by rememberSaveable(original.id) { mutableStateOf("") }
     val remaining = repos.filter { it.id !in selected && (it.name.contains(query, true) || it.owner.contains(query, true)) }
         .sortedBy { it.name.lowercase() }
+    val saveProduct = {
+        onSave(original.copy(name = name, description = description, stage = stage,
+            priority = priority, next = next, milestones = milestones, ideas = ideas,
+            repositoryIds = selected, focused = focused))
+    }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onSurface) {
         LazyColumn(Modifier.fillMaxSize().safeDrawingPadding(), contentPadding = PaddingValues(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
-                TextButton(onClick = onCancel) { Text("‹  Cancel") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = onCancel) { Text("‹  Cancel") }
+                    TextButton(onClick = saveProduct, enabled = name.isNotBlank() && error == null) { Text("Save") }
+                }
                 Text(if (original.name.isBlank()) "New product" else "Edit product", style = MaterialTheme.typography.headlineSmall)
                 Text("Saved on this device for your GitHub account.", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -76,9 +84,7 @@ internal fun ProductEditor(original: Product, repos: List<Repo>, error: String?,
                 }
             }
             item {
-                Button(onClick = { onSave(original.copy(name = name, description = description, stage = stage,
-                    priority = priority, next = next, milestones = milestones, ideas = ideas,
-                    repositoryIds = selected, focused = focused)) },
+                Button(onClick = saveProduct,
                     enabled = name.isNotBlank() && error == null, modifier = Modifier.fillMaxWidth()) { Text("Save product") }
             }
         }
