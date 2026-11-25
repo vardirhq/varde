@@ -18,12 +18,12 @@ internal fun ProductActivity(vm: Workspace, product: Product, repos: List<Repo>,
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("GitHub activity", style = MaterialTheme.typography.titleLarge)
         if (vm.feedLoading) Text("Checking workflow runs…", style = MaterialTheme.typography.bodySmall)
-        if (vm.feedIncomplete) Text("Workflow coverage may be incomplete.", color = MaterialTheme.colorScheme.error,
+        if (vm.feedIncomplete || !vm.attentionLoaded || vm.snapshotTime != null) Text("Workflow coverage may be incomplete or unavailable.", color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall)
         if (evidence == null) LinearProgressIndicator(Modifier.fillMaxWidth())
         evidence?.notes?.forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
         Text("Failed workflows", style = MaterialTheme.typography.titleSmall)
-        if (failures.isEmpty() && !vm.feedLoading && !vm.feedIncomplete) Text("No failed workflows found in the latest observed runs.",
+        if (failures.isEmpty() && !vm.feedLoading && !vm.feedIncomplete && vm.attentionLoaded && vm.snapshotTime == null) Text("No failed workflows found in the latest observed runs.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         failures.forEach { entry ->
             val repo = repos.firstOrNull { it.id == entry.repositoryId }
