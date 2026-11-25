@@ -64,6 +64,7 @@ fun Varde(vm: Workspace = viewModel()) {
     val clipboard = LocalClipboardManager.current
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var privateAccess by rememberSaveable { mutableStateOf(false) }
+    var publicWrite by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var owner by rememberSaveable { mutableStateOf<String?>(null) }
     var showArchived by rememberSaveable { mutableStateOf(false) }
@@ -112,7 +113,12 @@ fun Varde(vm: Workspace = viewModel()) {
                             Checkbox(privateAccess, { privateAccess = it }, enabled = !vm.busy)
                             Text("Include private repositories (grants broad repo access)", Modifier.clickable(enabled = !vm.busy) { privateAccess = !privateAccess })
                         }
-                        Button(onClick = { vm.signIn(privateAccess) }, enabled = !vm.busy) { Text("Sign in with GitHub") }
+                        if (!privateAccess) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(publicWrite, { publicWrite = it }, enabled = !vm.busy)
+                            Text("Allow writing to public repositories (public_repo scope)",
+                                Modifier.clickable(enabled = !vm.busy) { publicWrite = !publicWrite })
+                        }
+                        Button(onClick = { vm.signIn(privateAccess, publicWrite) }, enabled = !vm.busy) { Text("Sign in with GitHub") }
                         vm.code?.let { code ->
                             Text("Enter this code on GitHub", style = MaterialTheme.typography.titleMedium)
                             Text(code, style = MaterialTheme.typography.headlineMedium)
