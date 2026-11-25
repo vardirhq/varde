@@ -20,6 +20,7 @@ internal fun GitHubActionDialog(
     var body by remember { mutableStateOf("") }
     var mergeMethod by remember { mutableStateOf("merge") }
     var busy by remember { mutableStateOf(false) }
+    var outcomeUnknown by remember { mutableStateOf(false) }
     var verifying by remember { mutableStateOf(kind != WriteKind.COMMENT) }
     var ready by remember { mutableStateOf(kind == WriteKind.COMMENT) }
     var confirmation by remember { mutableStateOf(false) }
@@ -101,21 +102,22 @@ internal fun GitHubActionDialog(
             if (!confirmation) TextButton(enabled = ready && !verifying &&
                 (kind !in setOf(WriteKind.COMMENT, WriteKind.REQUEST_CHANGES) || body.isNotBlank()),
                 onClick = { error = null; confirmation = true }) { Text("Review") }
-            else TextButton(enabled = !busy, onClick = {
+            else TextButton(enabled = !busy && !outcomeUnknown, onClick = {
                 busy = true; error = null
                 scope.launch {
                     try {
                         vm.submitWrite(repo, WriteAction(kind, number, body, reviewedSha, mergeMethod))
                         onSuccess()
                     } catch (e: CancellationException) { throw e }
+                    catch (e: WriteOutcomeUnknown) { outcomeUnknown = true; error = e.message }
                     catch (e: Exception) { error = e.message ?: "Action failed." }
                     finally { busy = false }
                 }
             }) { Text(if (busy) "Submitting…" else "Confirm") }
         },
         dismissButton = {
-            TextButton(enabled = !busy, onClick = { if (confirmation) { confirmation = false; error = null } else onDismiss() }) {
-                Text(if (confirmation) "Back" else "Cancel")
+            TextButton(enabled = !busy, onClick = { if (confirmation && !outcomeUnknown) { confirmation = false; error = null } else onDismiss() }) {
+                Text(if (outcomeUnknown) "Close and refresh" else if (confirmation) "Back" else "Cancel")
             }
         }
     )
