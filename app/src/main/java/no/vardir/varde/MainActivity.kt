@@ -174,7 +174,9 @@ class Workspace(application: Application) : AndroidViewModel(application) {
     internal fun deleteProduct(id: String): Boolean = persistProducts(products.filterNot { it.id == id })
     internal fun portfolioBackup(): String {
         check(user.isNotBlank() && portfolioError == null) { "Portfolio is unavailable." }
-        return encodePortfolioBackup(user, products)
+        val backup = encodePortfolioBackup(user, products)
+        check(backup.toByteArray(Charsets.UTF_8).size <= 2_000_000) { "Portfolio is too large to export safely." }
+        return backup
     }
     internal fun restorePortfolio(raw: String, expectedUser: String) {
         check(user.isNotBlank() && user.equals(expectedUser, ignoreCase = true)) { "Account changed; choose the backup again." }
