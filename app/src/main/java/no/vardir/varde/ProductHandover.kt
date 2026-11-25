@@ -83,7 +83,8 @@ internal fun ProductHandover(vm: Workspace, product: Product, repos: List<Repo>,
                             if (product.work.isNotEmpty()) {
                                 appendLine("\n## Product work")
                                 product.work.forEach { appendLine("- [${if (it.done) "x" else " "}] ${it.kind}: ${it.title}" +
-                                    (if (it.url.isBlank()) "" else " — ${it.url}")) }
+                                    (if (it.url.isBlank()) "" else " — ${it.url}") +
+                                    (if (it.details.isBlank()) "" else "\n  ${it.details}")) }
                             }
                             val selectedAttention = (vm.feedItems + vm.attention).filter { it.repositoryId in selected && it.repositoryId !in vm.excludedRepos }
                             appendLine("\n## Available attention")
