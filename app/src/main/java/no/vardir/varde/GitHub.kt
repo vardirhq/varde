@@ -82,6 +82,22 @@ class GitHub(private val clientId: String) {
             throw WriteOutcomeUnknown(e)
         }
     }
+    internal suspend fun createIssue(repo: Repo, title: String, body: String, token: String): String = withContext(Dispatchers.IO) {
+        require(title.isNotBlank())
+        val payload = JSONObject().put("title", title).put("body", body).toString()
+        val request = Request.Builder().url("https://api.github.com/" + repoApi(repo) + "/issues")
+            .header("Authorization", "Bearer $token").header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), payload)).build()
+        try {
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) error("GitHub rejected issue creation (HTTP ${response.code}). Check access and permissions.")
+                val url = JSONObject(response.body?.string().orEmpty()).optString("html_url")
+                check(validWorkLink(url)) { "GitHub did not return a valid issue link. Check GitHub before retrying." }
+                url
+            }
+        } catch (e: java.io.IOException) { throw WriteOutcomeUnknown(e) }
+    }
     internal suspend fun rerunFailedJobs(repo: Repo, runId: Long, token: String) = withContext(Dispatchers.IO) {
         val path = repoApi(repo) + "/actions/runs/$runId/rerun-failed-jobs"
         val request = Request.Builder().url("https://api.github.com/$path")
