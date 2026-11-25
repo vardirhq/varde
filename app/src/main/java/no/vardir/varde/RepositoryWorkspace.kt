@@ -33,6 +33,8 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
     val history = remember(repo.id) { mutableStateListOf<String>() }
     var showHandover by remember { mutableStateOf(false) }
     var confirmRerun by remember { mutableStateOf(false) }
+    var writeKind by remember { mutableStateOf<WriteKind?>(null) }
+    var writeMessage by remember { mutableStateOf<String?>(null) }
     var rerunning by remember { mutableStateOf(false) }
     var rerunMessage by remember { mutableStateOf<String?>(null) }
     var diffComments by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
@@ -45,6 +47,8 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         page == "overview" -> base
         page == "commits" -> "$base/commits?per_page=30"
         page == "issues" -> "$base/issues?state=open&per_page=100"
+        page.startsWith("issue:") -> "$base/issues/" + page.removePrefix("issue:")
+        page.startsWith("issuecomments:") -> "$base/issues/" + page.removePrefix("issuecomments:") + "/comments?per_page=100"
         page == "pulls" -> "$base/pulls?state=open&per_page=100"
         page == "runs" -> "$base/actions/runs?per_page=50"
         page.startsWith("files:") -> "$base/contents/" + page.removePrefix("files:").split('/').joinToString("/") { pathPart(it) }
@@ -89,6 +93,8 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         if (history.isNotEmpty()) { page = history.removeAt(history.lastIndex); return }
         page = when {
             page == "overview" -> { onBack(); return }
+            page.startsWith("issuecomments:") -> "issue:" + page.substringAfter(':')
+            page.startsWith("issue:") -> "issues"
             page.startsWith("changes:") || page.startsWith("comments:") || page.startsWith("reviewcomments:") -> "pull:" + page.substringAfter(':')
             page.startsWith("statuses:") || page.startsWith("checks:") -> "pulls"
             page.startsWith("pull:") -> "pulls"
@@ -99,6 +105,17 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         }
     }
     androidx.activity.compose.BackHandler { back() }
+    writeKind?.let { kind ->
+        val number = page.substringAfter(':').toIntOrNull()
+        val data = payload
+        if (number != null && data != null) {
+            val sha = runCatching { JSONObject(data.body).optJSONObject("head")?.optString("sha").orEmpty() }.getOrDefault("")
+            GitHubActionDialog(vm, repo, number, kind, sha, page.startsWith("pull:"),
+                onDismiss = { writeKind = null }, onSuccess = {
+                    writeKind = null; writeMessage = "GitHub accepted the action."; generation++
+                })
+        }
+    }
     if (showHandover) HandoverDialog(vm, repo, page, payload) { showHandover = false }
     if (confirmRerun) AlertDialog(
         onDismissRequest = { confirmRerun = false },
@@ -152,6 +169,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
             }
             if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             rerunMessage?.let { message -> item { WorkspaceNotice("Workflow rerun", message) } }
+            writeMessage?.let { message -> item { WorkspaceNotice("GitHub action", message) } }
             error?.let { message -> item {
                 WorkspaceNotice("Couldn't load this view", message, isError = true)
             } }
@@ -174,6 +192,19 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                     if (links.isEmpty() && result.isSuccess) item {
                         WorkspaceNotice("Nothing here yet", "There is nothing to show in this view.")
                     }
+                    if ((page.startsWith("pull:") || page.startsWith("issue:")) && !response.cached) item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { writeKind = WriteKind.COMMENT }, modifier = Modifier.fillMaxWidth()) { Text("Add comment") }
+                            if (page.startsWith("pull:") && runCatching { JSONObject(response.body).optString("state") == "open" }.getOrDefault(false)) {
+                                OutlinedButton(onClick = { writeKind = WriteKind.APPROVE }, modifier = Modifier.fillMaxWidth()) { Text("Approve") }
+                                OutlinedButton(onClick = { writeKind = WriteKind.REQUEST_CHANGES }, modifier = Modifier.fillMaxWidth()) { Text("Request changes") }
+                                Button(onClick = { writeKind = WriteKind.MERGE }, modifier = Modifier.fillMaxWidth()) { Text("Merge…") }
+                            }
+                        }
+                    }
+                    if ((page.startsWith("pull:") || page.startsWith("issue:")) && response.cached) item {
+                        WorkspaceNotice("Actions unavailable offline", "Reconnect and refresh before submitting GitHub actions.")
+                    }
                     if (page.startsWith("pull:")) {
                         item { PullSummary(response.body) }
                         item { PullChecks(vm, repo, response.body) { navigate(it) } }
@@ -187,15 +218,15 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
                         val canOpen = link.route.isNotBlank()
                         val longContent = page.startsWith("changes:") ||
                             (page.startsWith("files:") && link.route.startsWith("https://github.com/")) ||
-                            page.startsWith("comments:") || page.startsWith("reviewcomments:") ||
-                            (page.startsWith("pull:") && !canOpen)
+                            page.startsWith("comments:") || page.startsWith("reviewcomments:") || page.startsWith("issuecomments:") ||
+                            ((page.startsWith("pull:") || page.startsWith("issue:")) && !canOpen)
                         if (page.startsWith("changes:")) {
                             DiffCard(link.title, link.subtitle, diffComments[link.title].orEmpty(), onOpen =
                                 if (link.route.startsWith("https://github.com/")) ({ uri.openUri(link.route) }) else null)
                         } else if (longContent) {
                             WorkspaceTextBlock(link.title, link.subtitle,
                                 monospace = page.startsWith("changes:") || page.startsWith("files:"),
-                                markdown = page.startsWith("pull:") || page.startsWith("comments:") ||
+                                markdown = page.startsWith("pull:") || page.startsWith("issue:") || page.startsWith("issuecomments:") || page.startsWith("comments:") ||
                                     page.startsWith("reviewcomments:") ||
                                     (page.startsWith("files:") && link.title.endsWith(".md", ignoreCase = true)),
                                 languageHint = if (page.startsWith("files:")) link.title else "",
@@ -219,6 +250,8 @@ private fun workspacePageTitle(page: String): String = when {
     page == "overview" -> "Repository overview"
     page == "commits" -> "Recent commits"
     page == "issues" -> "Open issues"
+    page.startsWith("issue:") -> "Issue #" + page.substringAfter(':')
+    page.startsWith("issuecomments:") -> "Issue conversation"
     page == "pulls" -> "Pull requests"
     page == "runs" -> "Workflow runs"
     page.startsWith("pull:") -> "Pull request #${page.substringAfter(':')}"
@@ -296,6 +329,13 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
         )
     }
     val parsed = org.json.JSONTokener(body).nextValue()
+    if (page.startsWith("issue:") && parsed is JSONObject) {
+        val number = page.substringAfter(':')
+        return listOf(
+            WorkspaceLink(jsonText(parsed, "title"), jsonText(parsed, "body", "No description"), ""),
+            WorkspaceLink("Comments", "Read conversation", "issuecomments:$number")
+        )
+    }
     if (page.startsWith("pull:") && parsed is JSONObject) {
         val number = page.substringAfter(':')
         val sha = parsed.optJSONObject("head")?.optString("sha").orEmpty()
@@ -338,13 +378,13 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
         when {
             page == "commits" -> WorkspaceLink(o.optJSONObject("commit")?.optString("message")?.lineSequence()?.firstOrNull().orEmpty(), jsonText(o, "sha").take(8), jsonText(o, "html_url"))
             page == "issues" && o.has("pull_request") -> null
-            page == "issues" -> WorkspaceLink("#${o.optInt("number")} ${jsonText(o, "title")}", "Open issue", jsonText(o, "html_url"))
+            page == "issues" -> WorkspaceLink("#${o.optInt("number")} ${jsonText(o, "title")}", "Open issue", "issue:${o.optInt("number")}")
             page == "pulls" -> WorkspaceLink("#${o.optInt("number")} ${jsonText(o, "title")}", jsonText(o, "state"), "pull:${o.optInt("number")}")
             page == "runs" -> WorkspaceLink(jsonText(o, "name", "Workflow"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}", "run:${o.optLong("id")}")
             page.startsWith("run:") -> WorkspaceLink(jsonText(o, "name", "Job"), "${jsonText(o, "status")} · ${jsonText(o, "conclusion")}", "log:${o.optLong("id")}:${page.substringAfter(':')}")
             page.startsWith("files:") -> WorkspaceLink(jsonText(o, "name"), jsonText(o, "type"), "files:${jsonText(o, "path")}")
             page.startsWith("changes:") -> WorkspaceLink(jsonText(o, "filename"), jsonText(o, "patch", "Patch unavailable"), jsonText(o, "blob_url"))
-            page.startsWith("comments:") || page.startsWith("reviewcomments:") -> WorkspaceLink(o.optJSONObject("user")?.optString("login").orEmpty(), jsonText(o, "body"), jsonText(o, "html_url"))
+            page.startsWith("comments:") || page.startsWith("reviewcomments:") || page.startsWith("issuecomments:") -> WorkspaceLink(o.optJSONObject("user")?.optString("login").orEmpty(), jsonText(o, "body"), jsonText(o, "html_url"))
             else -> null
         }
     }
