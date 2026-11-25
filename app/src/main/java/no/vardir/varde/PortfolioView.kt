@@ -116,6 +116,8 @@ internal fun ProductCard(product: Product, onClick: () -> Unit) {
             Text((if (product.focused) "Focused · " else "") + "${product.stage} · ${product.priority} priority",
                 color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
             if (product.next.isNotBlank()) Text(product.next, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+            if (product.work.any { !it.done }) Text("${product.work.count { !it.done }} open work items",
+                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Text("${product.repositoryIds.size} linked repositories", color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall)
         }
