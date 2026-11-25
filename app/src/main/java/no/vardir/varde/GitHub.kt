@@ -4,6 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import android.os.SystemClock
@@ -88,7 +90,7 @@ class GitHub(private val clientId: String) {
         val request = Request.Builder().url("https://api.github.com/" + repoApi(repo) + "/issues")
             .header("Authorization", "Bearer $token").header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
-            .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), payload)).build()
+            .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
         try {
             http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) error("GitHub rejected issue creation (HTTP ${response.code}). Check access and permissions.")
