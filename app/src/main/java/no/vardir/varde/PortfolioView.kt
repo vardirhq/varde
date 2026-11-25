@@ -43,7 +43,7 @@ internal fun PortfolioView(
     }
     val editor = editing
     if (editor != null) {
-        ProductEditor(editor, vm.repos.filterNot { it.id in vm.excludedRepos },
+        ProductEditor(editor, vm.repos.filterNot { it.id in vm.excludedRepos }, vm.portfolioError,
             onCancel = { editing = null }, onSave = {
                 if (vm.saveProduct(it)) { selectedId = it.id; editing = null }
             })
