@@ -53,10 +53,17 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 
 @Composable
 fun Varde(vm: Workspace = viewModel()) {
+    var portfolioVisible by rememberSaveable { mutableStateOf(false) }
+    var portfolioStart by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedRepo by remember { mutableStateOf<Repo?>(null) }
     var selectedPage by remember { mutableStateOf("overview") }
     selectedRepo?.let { repo ->
         RepositoryWorkspace(vm, repo, selectedPage) { selectedRepo = null; selectedPage = "overview" }
+        return
+    }
+    if (portfolioVisible) {
+        PortfolioView(vm, initialProductId = portfolioStart, onBack = { portfolioVisible = false; portfolioStart = null },
+            onOpenRepo = { repo, page -> selectedPage = page; selectedRepo = repo })
         return
     }
     val uri = LocalUriHandler.current
@@ -151,12 +158,24 @@ fun Varde(vm: Workspace = viewModel()) {
                         if (target != null && route != null) { selectedPage = route; selectedRepo = target }
                         else uri.openUri(entry.url)
                     } }
+                    item { SectionHeading("Focused products", "Portfolio") { portfolioStart = null; portfolioVisible = true } }
+                    vm.portfolioError?.let { message -> item { InfoPanel("Portfolio unavailable", message) } }
+                    if (vm.products.none { it.focused } && vm.portfolioError == null) item {
+                        InfoPanel("Make room for what matters", "Create a product and focus it here to keep its next step close.")
+                    }
+                    items(vm.products.filter { it.focused }.sortedBy { it.name.lowercase() }, key = { it.id }) { product ->
+                        Box(Modifier.padding(horizontal = 20.dp)) {
+                            ProductCard(product) { portfolioStart = product.id; portfolioVisible = true }
+                        }
+                    }
                     item { SectionHeading("Your projects", "See all") { tab = Tab.Projects } }
                     if (includedRepos.isEmpty() && !vm.busy) item { InfoPanel("No visible repositories", "Choose repositories in Settings or refresh GitHub.") }
                     items(dashboardRepositories(sortedRepos), key = { it.id }) { repo -> RepoCard(repo) { selectedPage = "overview"; selectedRepo = repo } }
                 }
                 Tab.Projects -> {
                     item { PageTitle("Your projects", "Repositories accessible on GitHub") }
+                    item { OutlinedButton(onClick = { portfolioStart = null; portfolioVisible = true },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { Text("Open product portfolio") } }
                     item { OutlinedTextField(query, { query = it }, label = { Text("Search repositories") }, singleLine = true,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) }
                     item { Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
