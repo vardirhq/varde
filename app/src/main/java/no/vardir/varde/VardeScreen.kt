@@ -1,6 +1,5 @@
 package no.vardir.varde
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,12 +16,12 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -237,17 +236,10 @@ fun Varde(vm: Workspace = viewModel()) {
 
 @Composable private fun VardeHeader() {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        CairnMark()
+        Icon(painter = painterResource(R.drawable.ic_varde_mark), contentDescription = null,
+            tint = Amber, modifier = Modifier.size(48.dp))
         Spacer(Modifier.width(12.dp))
         Text("Varde", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable private fun CairnMark() {
-    Canvas(Modifier.size(32.dp)) {
-        drawRoundRect(Amber, topLeft = Offset(size.width * .36f, 0f), size = androidx.compose.ui.geometry.Size(size.width * .28f, size.height * .2f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width))
-        drawRoundRect(Amber, topLeft = Offset(size.width * .22f, size.height * .28f), size = androidx.compose.ui.geometry.Size(size.width * .56f, size.height * .25f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width))
-        drawRoundRect(Amber, topLeft = Offset(size.width * .06f, size.height * .61f), size = androidx.compose.ui.geometry.Size(size.width * .88f, size.height * .3f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width))
     }
 }
 
