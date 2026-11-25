@@ -218,6 +218,7 @@ fun Varde(vm: Workspace = viewModel()) {
                         val id = entry.url.substringAfterLast('/')
                         val route = when {
                             entry.kind == "Latest workflow run failed" && id.toLongOrNull() != null -> "run:$id"
+                            entry.kind == "Issue" && id.toIntOrNull() != null -> "issue:$id"
                             (entry.kind == "PR checks failing" || entry.kind == "Review requested" || entry.kind == "Pull request") && id.toIntOrNull() != null -> "pull:$id"
                             else -> null
                         }
