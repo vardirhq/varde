@@ -2,6 +2,10 @@ package no.vardir.varde
 
 import android.util.Base64
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -64,42 +68,141 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, initialPage: String 
         }
     }
     androidx.activity.compose.BackHandler { back() }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { back() }) { Text("‹ Back") }
-                TextButton(onClick = { generation++ }, enabled = !loading) { Text("Refresh") }
-            }
-            Text(repo.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("${repo.owner} / ${page.substringBefore(':').replaceFirstChar { it.uppercase() }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-        error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
-        payload?.let { response ->
-            if (response.cached) item { Text("Offline copy · saved ${DateFormat.getDateTimeInstance().format(Date(response.savedAt))}", color = MaterialTheme.colorScheme.primary) }
-            if (page.startsWith("log:")) {
-                item { Text(response.body, style = MaterialTheme.typography.bodySmall) }
-            } else {
-                val result = runCatching { workspaceLinks(page, response.body) }
-                val links = result.getOrDefault(emptyList())
-                if (result.isFailure) item { Text("Could not read the GitHub response.", color = MaterialTheme.colorScheme.error) }
-                if (page == "overview") item {
-                    if (repo.description.isNotBlank()) Text(repo.description, style = MaterialTheme.typography.bodyLarge)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onSurface
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().safeDrawingPadding(),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { back() }) { Text("‹  Back") }
+                    TextButton(onClick = { generation++ }, enabled = !loading) { Text("Refresh") }
                 }
-                if (links.isEmpty() && result.isSuccess) item { Text("Nothing to show.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                items(links) { link ->
-                    OutlinedCard(onClick = {
-                        if (link.route.startsWith("https://github.com/")) uri.openUri(link.route)
-                        else if (link.route.isNotBlank()) page = link.route
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(link.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            if (link.subtitle.isNotBlank()) Text(link.subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                Text(repo.owner.uppercase(), style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(4.dp))
+                Text(repo.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text(workspacePageTitle(page), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(14.dp))
+            }
+            if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            error?.let { message -> item {
+                WorkspaceNotice("Couldn't load this view", message, isError = true)
+            } }
+            payload?.let { response ->
+                if (response.cached) item {
+                    WorkspaceNotice("Offline copy", "Saved ${DateFormat.getDateTimeInstance().format(Date(response.savedAt))}")
+                }
+                if (page.startsWith("log:")) {
+                    item { WorkspaceTextBlock("Job log", response.body, monospace = true) }
+                } else {
+                    val result = runCatching { workspaceLinks(page, response.body) }
+                    val links = result.getOrDefault(emptyList())
+                    if (result.isFailure) item {
+                        WorkspaceNotice("Couldn't read this view", "The GitHub response could not be displayed.", isError = true)
+                    }
+                    if (page == "overview" && repo.description.isNotBlank()) item {
+                        Text(repo.description, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
+                    }
+                    if (links.isEmpty() && result.isSuccess) item {
+                        WorkspaceNotice("Nothing here yet", "There is nothing to show in this view.")
+                    }
+                    items(links) { link ->
+                        val canOpen = link.route.isNotBlank()
+                        val longContent = page.startsWith("changes:") ||
+                            (page.startsWith("files:") && link.route.startsWith("https://github.com/")) ||
+                            page.startsWith("comments:") || page.startsWith("reviewcomments:") ||
+                            (page.startsWith("pull:") && !canOpen)
+                        if (longContent) {
+                            WorkspaceTextBlock(link.title, link.subtitle,
+                                monospace = page.startsWith("changes:") || page.startsWith("files:"),
+                                onOpen = if (link.route.startsWith("https://github.com/")) ({ uri.openUri(link.route) }) else null)
+                        } else {
+                            WorkspaceRow(link, onClick = if (!canOpen) null else {
+                                {
+                                    if (link.route.startsWith("https://github.com/")) uri.openUri(link.route)
+                                    else page = link.route
+                                }
+                            })
                         }
                     }
                 }
             }
         }
+    }
+}
+
+private fun workspacePageTitle(page: String): String = when {
+    page == "overview" -> "Repository overview"
+    page == "commits" -> "Recent commits"
+    page == "issues" -> "Open issues"
+    page == "pulls" -> "Pull requests"
+    page == "runs" -> "Workflow runs"
+    page.startsWith("pull:") -> "Pull request #${page.substringAfter(':')}"
+    page.startsWith("changes:") -> "Changed files"
+    page.startsWith("reviewcomments:") -> "Review comments"
+    page.startsWith("comments:") -> "Conversation"
+    page.startsWith("checks:") -> "Checks"
+    page.startsWith("statuses:") -> "Commit status"
+    page.startsWith("run:") -> "Workflow jobs"
+    page.startsWith("log:") -> "Job log"
+    page.startsWith("files:") -> page.substringAfter(':').ifBlank { "Files" }
+    else -> "Repository"
+}
+
+@Composable
+private fun WorkspaceRow(link: WorkspaceLink, onClick: (() -> Unit)?) {
+    val shape = RoundedCornerShape(14.dp)
+    val background = MaterialTheme.colorScheme.surfaceVariant
+    val body: @Composable () -> Unit = {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(link.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                if (link.subtitle.isNotBlank()) Text(link.subtitle, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (onClick != null) Text("›", Modifier.padding(start = 12.dp),
+                style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+    if (onClick == null) Surface(color = background, shape = shape, content = body)
+    else Surface(onClick = onClick, color = background, shape = shape, content = body)
+}
+
+@Composable
+private fun WorkspaceTextBlock(title: String, text: String, monospace: Boolean = false, onOpen: (() -> Unit)? = null) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary)
+            Text(text, style = MaterialTheme.typography.bodySmall,
+                fontFamily = if (monospace) FontFamily.Monospace else FontFamily.Default,
+                color = MaterialTheme.colorScheme.onSurface)
+            if (onOpen != null) TextButton(onClick = onOpen) { Text("Open on GitHub") }
+        }
+    }
+}
+
+@Composable
+private fun WorkspaceNotice(title: String, message: String, isError: Boolean = false) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp))
+        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+        Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
