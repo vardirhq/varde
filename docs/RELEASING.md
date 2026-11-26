@@ -4,6 +4,14 @@ Publishing a GitHub release (on GitHub, or from Varde's own **Releases** page) r
 
 ## One-time setup: the release key
 
+The quick way, on your own computer with a JDK, `openssl` and the GitHub CLI (`gh auth login`):
+
+```sh
+scripts/create-release-key.sh            # creates ~/varde-release-key and sets the four secrets
+```
+
+It refuses to replace an existing key. Back up the folder it creates. The manual steps below do the same thing.
+
 The release key signs every release. Android only installs an update when it is signed with the same key as the installed app, so **keep the key and its passwords safe and backed up**. If the key is lost, no future release can update an installed copy.
 
 1. Create the key on your computer (needs a JDK):
@@ -29,6 +37,8 @@ The key is decoded to a temporary file during the build and deleted afterwards. 
 Draft a release with a tag like `v0.2.0` (Varde suggests the next version), then publish it. The APK appears on the release a few minutes later. The app's version name is the tag without the `v`.
 
 ## Debug and release builds
+
+Debug builds are named after the latest release tag and their CI run, like `0.2.0-dev.57`, or `0.1.57` before the first release. Android only shows the name; the version code decides what counts as an update.
 
 CI also builds a debug APK on every push and pull request, signed with a public debug key (`app/debug-keystore.b64`). Debug and release builds use the same app ID but different keys, so Android can't update one with the other: switching from a debug build to a release build means uninstalling the debug build first, which removes its local data and requires signing in again.
 

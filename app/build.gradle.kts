@@ -17,10 +17,16 @@ android {
         val build = providers.environmentVariable("GITHUB_RUN_NUMBER").orElse("1").get().toInt()
         // Release builds pass their own, always-increasing code; run numbers restart in each workflow.
         versionCode = providers.environmentVariable("VARDE_VERSION_CODE").orNull?.toInt() ?: build
-        // A tagged release (v1.2.3) is named after its tag; other builds after their CI run.
+        // A tagged release (v1.2.3) is named after its tag. Other builds are named after the latest release and their
+        // CI run (0.2.0-dev.57), or 0.1.<run> before the first release. Android only shows the name; versionCode orders updates.
         val tag = providers.environmentVariable("GITHUB_REF_NAME").orElse("").get()
         val tagged = providers.environmentVariable("GITHUB_REF_TYPE").orElse("").get() == "tag" && tag.matches(Regex("v?\\d+\\.\\d+\\.\\d+.*"))
-        versionName = if (tagged) tag.removePrefix("v") else "0.1.$build"
+        val base = providers.environmentVariable("VARDE_BASE_VERSION").orElse("").get().removePrefix("v")
+        versionName = when {
+            tagged -> tag.removePrefix("v")
+            base.matches(Regex("\\d+\\.\\d+\\.\\d+")) -> "$base-dev.$build"
+            else -> "0.1.$build"
+        }
         val clientId = providers.environmentVariable("GH_CLIENT_ID").orElse("").get()
         require(clientId.matches(Regex("[A-Za-z0-9_]*"))) { "Invalid GitHub client ID" }
         buildConfigField("String", "GH_CLIENT_ID", "\"$clientId\"")
