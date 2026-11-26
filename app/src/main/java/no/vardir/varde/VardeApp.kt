@@ -79,7 +79,7 @@ private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Mod
                 onShowProducts = { nav.switchTab(ProductsRoute) })
         }
         composable<ProductsRoute> {
-            ProductsScreen(portfolio, onOpen = { nav.navigate(ProductRoute(it.id)) },
+            ProductsScreen(portfolio, vm.insights, vm.inbox, repositories, vm.github, onOpen = { nav.navigate(ProductRoute(it.id)) },
                 onCreate = { nav.navigate(ProductEditRoute(java.util.UUID.randomUUID().toString(), isNew = true)) })
         }
         composable<ReposRoute> { ReposScreen(vm, repositories, onOpen = { openRepo(it, "overview") }) }
@@ -90,7 +90,7 @@ private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Mod
         composable<RepoVisibilityRoute> { RepoVisibilityScreen(repositories, onBack = { nav.popBackStack() }) }
         composable<ProductRoute> { backStack ->
             val route = backStack.toRoute<ProductRoute>()
-            ProductScreen(portfolio, repositories, vm.inbox, vm.delegations, vm.assistant, vm.github, route.productId, onBack = { nav.popBackStack() },
+            ProductScreen(portfolio, repositories, vm.inbox, vm.delegations, vm.assistant, vm.github, vm.insights, route.productId, onBack = { nav.popBackStack() },
                 onEdit = { nav.navigate(ProductEditRoute(route.productId, isNew = false)) },
                 onOpenRepo = openRepo)
         }

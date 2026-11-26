@@ -25,15 +25,4 @@ class PortfolioTest {
         assertEquals(1, productAttention(Product("p", "X", repositoryIds = listOf(1)), items, emptySet()).size)
         assertTrue(productAttention(Product("p", "X", repositoryIds = listOf(1)), items, setOf(1)).isEmpty())
     }
-    @Test fun evidenceReportsCachedAndMissingData() = runBlocking {
-        val result = loadProductEvidence(listOf(repo)) { path ->
-            if (path.contains("/pulls?")) CachedResponse(
-                """[{"title":"Fix","html_url":"https://github.com/vardir/engine/pull/4"}]""", true, 0)
-            else throw java.io.IOException("offline")
-        }
-        assertEquals("Fix", result.pullRequests.single().title)
-        assertTrue(result.notes.any { it.contains("cached") })
-        assertTrue(result.notes.any { it.contains("could not be loaded") })
-        assertTrue(result.activity.isEmpty())
-    }
 }

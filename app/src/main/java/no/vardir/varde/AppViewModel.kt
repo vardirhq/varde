@@ -44,6 +44,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
     internal val dismissed = DismissedItems(application.applicationContext)
     private var delegationJob: Job? = null
     internal val notifications = NotificationPrefs(application.applicationContext)
+    internal val insights = ProductInsights()
     /** Optional on-device assistance; ML Kit is only touched once it has been switched on. */
     internal val assistant = OnDeviceAssistant(application.applicationContext) { MlKitTextModel(application.applicationContext) }
     private val appContext = application.applicationContext
@@ -143,7 +144,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
 
     private fun reset() {
         BackgroundChecks.cancel(appContext); notifications.forgetAccounts(); ResponseCache.clearAll(appContext)
-        delegationJob?.cancel(); inbox.clear(); delegations.clear(); dismissed.clear(); repositories.clear(); portfolio.clear()
+        delegationJob?.cancel(); inbox.clear(); insights.clear(); delegations.clear(); dismissed.clear(); repositories.clear(); portfolio.clear()
         store.clear(); token = null; signedIn = false; user = ""
     }
 

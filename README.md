@@ -4,6 +4,8 @@ Mobile development management for AI-assisted developers. Varde is a native Andr
 
 See [product vision](docs/VISION.md) and [roadmap](docs/ROADMAP.md).
 
+If Varde saves you time, you can [buy me a coffee](https://buymeacoffee.com/madsendev).
+
 ## Build
 Use JDK 17, Android SDK 35 and Gradle 8.9. Run `GH_CLIENT_ID=your_client_id gradle :app:assembleDebug`. The public client ID is required for login; never embed a client secret. Enable Device Flow in the GitHub OAuth app. This initial client requires non-expiring access tokens; expired or revoked sessions require sign-in again.
 
@@ -20,6 +22,10 @@ Open a repository for its README and docs, recent commits, open issues and pull 
 **Handovers.** Briefs include repository instructions (AGENTS.md, CLAUDE.md) verbatim plus the screen's evidence. Share or copy them, or send them to an agent that works from GitHub: post them to an issue or pull request for `@claude` or `@copilot`, assign an issue to Copilot's coding agent, or open a new issue for either. That needs the Claude GitHub app or Copilot's coding agent set up for the repository. Tracked handovers are followed in the Inbox until their pull request is ready.
 
 **Storage and privacy.** Settings can exclude repositories. Pins, groups and the portfolio stay in app-private storage per account. GitHub responses are cached in a size-capped cache for offline use and when GitHub is rate limited or failing; cached screens show when they were saved, logs are never cached, and every cache is cleared on sign-out. Optional background checks (Settings → Notifications) poll GitHub about every 30 minutes over WorkManager, using conditional requests; the first check only records existing items, and nothing is sent anywhere except GitHub. Optional on-device assistance (Settings → On-device assistance, off by default) uses Gemini Nano through ML Kit on supported phones to draft handover tasks, rewrite review comments, suggest log lines and summarize release notes from change titles; repository instructions and tracking IDs never pass through the model, and ML Kit is only started while the feature is on.
+
+## Products
+
+A product groups repositories with a stage, priority, next step and work items. Its page shows **This week**: pull requests merged and releases published in the last 7 days, and what's stuck (failing checks and workflows, delegations waiting for you, pull requests untouched for a week), followed by **Release readiness** for each repository: unreleased commits since its last release and its default branch's checks. Product cards show a one-line summary of the week. It's all counted from GitHub, and partial data is flagged.
 
 ## Installing builds
 
