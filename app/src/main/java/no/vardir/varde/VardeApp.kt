@@ -72,7 +72,8 @@ private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Mod
     }
     NavHost(nav, startDestination = InboxRoute, modifier = modifier) {
         composable<InboxRoute> {
-            InboxScreen(vm, vm.user, vm.inbox, repositories, portfolio, onOpenItem = openAttention, onOpenProduct = { nav.navigate(ProductRoute(it.id)) },
+            InboxScreen(vm, vm.user, vm.inbox, repositories, portfolio, vm.delegations, onDelegationsChanged = vm::refreshDelegations,
+                onOpenItem = openAttention, onOpenPull = { repoId, number -> nav.navigate(RepositoryRoute(repoId, "pull:$number")) }, onOpenProduct = { nav.navigate(ProductRoute(it.id)) },
                 onShowProducts = { nav.switchTab(ProductsRoute) })
         }
         composable<ProductsRoute> {
@@ -86,7 +87,7 @@ private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Mod
         composable<RepoVisibilityRoute> { RepoVisibilityScreen(repositories, onBack = { nav.popBackStack() }) }
         composable<ProductRoute> { backStack ->
             val route = backStack.toRoute<ProductRoute>()
-            ProductScreen(portfolio, repositories, vm.inbox, vm.github, route.productId, onBack = { nav.popBackStack() },
+            ProductScreen(portfolio, repositories, vm.inbox, vm.delegations, vm.github, route.productId, onBack = { nav.popBackStack() },
                 onEdit = { nav.navigate(ProductEditRoute(route.productId, isNew = false)) },
                 onOpenRepo = openRepo)
         }
@@ -109,7 +110,7 @@ private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Mod
             if (repo == null) {
                 if (vm.busy) Box(Modifier.fillMaxSize()) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 else MissingScreen("Repository unavailable", "Refresh GitHub data or check that you still have access.") { nav.popBackStack() }
-            } else RepositoryWorkspace(vm.github, repo, route.page,
+            } else RepositoryWorkspace(vm.github, vm.delegations, repo, route.page,
                 onNavigate = { page -> nav.navigate(RepositoryRoute(repo.id, page)) },
                 onBack = { nav.popBackStack() })
         }

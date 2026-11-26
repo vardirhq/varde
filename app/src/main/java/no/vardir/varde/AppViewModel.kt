@@ -40,6 +40,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
     internal val repositories = RepositoryState(application.applicationContext, onVisibilityChanged = ::restartFeed)
     internal val portfolio = PortfolioStore(application.applicationContext)
     internal val inbox = AttentionInbox(viewModelScope)
+    internal val delegations = DelegationTracker(application.applicationContext)
+    private var delegationJob: Job? = null
     override val snapshotTime: Long? get() = repositories.snapshotTime
 
     init {
@@ -48,6 +50,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
             if (previous.isNotBlank()) {
                 user = previous
                 portfolio.open(previous)
+                delegations.open(previous)
                 repositories.open(previous, fromSnapshot = true)
             }
             refresh()
@@ -80,10 +83,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
     private suspend fun sync(access: String) {
         user = client.login(access)
         portfolio.open(user)
+        delegations.open(user)
         repositories.open(user)
         repositories.replace(user, client.repositories(access))
         inbox.loadAssigned { client.assignedWork(access) }
         restartFeed()
+        refreshDelegations()
+    }
+
+    /** Checks tracked delegations on GitHub without blocking the rest of the sync. */
+    internal fun refreshDelegations() {
+        if (token == null || user.isBlank()) return
+        delegationJob?.cancel()
+        delegationJob = viewModelScope.launch {
+            try { delegations.refresh(repositories::find, github::load) }
+            catch (e: CancellationException) { throw e }
+            catch (_: Unauthorized) { reset(); error = "Session expired. Sign in again." }
+        }
     }
 
     private fun restartFeed() {
@@ -95,7 +111,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
     fun cancel() { job?.cancel() }
 
     private fun reset() {
-        inbox.clear(); repositories.clear(); portfolio.clear()
+        delegationJob?.cancel(); inbox.clear(); delegations.clear(); repositories.clear(); portfolio.clear()
         store.clear(); token = null; signedIn = false; user = ""
     }
 

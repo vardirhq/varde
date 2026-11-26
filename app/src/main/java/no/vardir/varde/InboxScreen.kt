@@ -3,6 +3,7 @@ package no.vardir.varde
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -21,10 +22,24 @@ import java.util.Calendar
 @Composable
 internal fun InboxScreen(
     sync: SyncInfo, user: String, inbox: AttentionInbox, repositories: RepositoryState, portfolio: PortfolioStore,
-    onOpenItem: (AttentionItem) -> Unit, onOpenProduct: (Product) -> Unit, onShowProducts: () -> Unit,
+    delegations: DelegationTracker, onDelegationsChanged: () -> Unit, onOpenItem: (AttentionItem) -> Unit, onOpenPull: (Long, Int) -> Unit,
+    onOpenProduct: (Product) -> Unit, onShowProducts: () -> Unit,
 ) {
-    val sections = inboxSections(inbox.items(repositories.excluded))
-    val count = sections.sumOf { it.second.size }
+    val delegated = inboxDelegations(delegations)
+    // A tracked pull request is shown once, under Delegated, with its delegation status.
+    val trackedPulls = delegated.mapNotNull { it.second?.pull?.htmlUrl?.takeIf { url -> url.isNotBlank() } }.toSet()
+    val sections = inboxSections(inbox.items(repositories.excluded).filterNot { it.url in trackedPulls })
+    val count = sections.sumOf { it.second.size } + delegated.count { it.second?.stage?.needsYou == true }
+    var openDelegation by remember { mutableStateOf<String?>(null) }
+    openDelegation?.let { id -> delegations.find(id) }?.let { d ->
+        val id = d.id
+        DelegationDialog(d, delegations.statuses[id], canOpen = repositories.included.any { it.id == d.repoId },
+            onOpenPull = { number -> openDelegation = null; onOpenPull(d.repoId, number) },
+            onLink = { number -> delegations.linkPull(id, number); openDelegation = null; onDelegationsChanged() },
+            onDone = { delegations.markDone(id); openDelegation = null },
+            onRemove = { delegations.remove(id); openDelegation = null },
+            onClose = { openDelegation = null })
+    }
     val now = remember(inbox.feedItems, inbox.assigned) { java.time.Instant.now() }
     val focused = portfolio.products.filter { it.focused }.sortedBy { it.name.lowercase() }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -45,12 +60,15 @@ internal fun InboxScreen(
             inbox.assignedError != null -> null
             !inbox.assignedLoaded && sync.busy -> "Loading assigned work" to "Checking GitHub for open issues and pull requests assigned to you."
             !inbox.assignedLoaded -> "Assigned work not loaded" to "Refresh to check GitHub for assigned work."
-            count == 0 && !inbox.feedLoading && !inbox.feedIncomplete -> "You're all caught up" to "Review requests, failing checks, workflows and assigned work will appear here."
+            count == 0 && delegated.isEmpty() && !inbox.feedLoading && !inbox.feedIncomplete -> "You're all caught up" to "Review requests, failing checks, workflows and assigned work will appear here."
             else -> null
         }
         inbox.assignedError?.let { item { Notice("Couldn't load assigned work", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
         emptyState?.let { (title, message) -> item { Notice(title, message, modifier = Modifier.padding(horizontal = ScreenGutter)) } }
-        sections.forEach { (section, entries) ->
+        // Delegated work sits after review requests and before assigned work.
+        val delegatedAt = sections.indexOfFirst { it.first == InboxSection.Assigned }.let { if (it < 0) sections.size else it }
+        sections.forEachIndexed { index, (section, entries) ->
+            if (index == delegatedAt) delegatedSection(delegated, delegations, now) { openDelegation = it }
             item(key = "section:${section.name}") {
                 Text("${section.title} · ${entries.size}", Modifier.padding(horizontal = ScreenGutter).padding(top = 4.dp)
                     .semantics { heading() }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -59,6 +77,7 @@ internal fun InboxScreen(
                 AttentionCard(entry, now, Modifier.padding(horizontal = ScreenGutter)) { onOpenItem(entry) }
             }
         }
+        if (delegatedAt == sections.size) delegatedSection(delegated, delegations, now) { openDelegation = it }
         item { SectionHeader("Focused products", Modifier.padding(horizontal = ScreenGutter), "All products", onShowProducts) }
         portfolio.error?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
         if (focused.isEmpty() && portfolio.error == null) item {
@@ -134,4 +153,21 @@ private fun spokenAge(age: String): String {
     val n = age.takeWhile { it.isDigit() }
     val unit = when (age.drop(n.length)) { "m" -> "minute"; "h" -> "hour"; "d" -> "day"; "w" -> "week"; "mo" -> "month"; else -> return age }
     return "$n $unit" + if (n == "1") "" else "s"
+}
+
+private fun LazyListScope.delegatedSection(
+    delegated: List<Pair<Delegation, DelegationStatus?>>, tracker: DelegationTracker, now: java.time.Instant, onOpen: (String) -> Unit,
+) {
+    if (delegated.isEmpty() && tracker.error == null) return
+    item(key = "section:delegated") {
+        Row(Modifier.fillMaxWidth().padding(horizontal = ScreenGutter).padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Delegated · ${delegated.size}", Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (tracker.checking) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        }
+    }
+    tracker.error?.let { item { Notice("Delegations unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
+    items(delegated, key = { "delegation:${it.first.id}" }) { (d, status) ->
+        DelegationCard(d, status, now, Modifier.padding(horizontal = ScreenGutter)) { onOpen(d.id) }
+    }
 }
