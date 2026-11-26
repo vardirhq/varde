@@ -16,9 +16,17 @@ import androidx.compose.ui.unit.dp
 private fun prioritySort(priority: String) = when (priority) { "High" -> 0; "Normal" -> 1; else -> 2 }
 
 @Composable
-internal fun ProductsScreen(portfolio: PortfolioStore, onOpen: (Product) -> Unit, onCreate: () -> Unit) {
+internal fun ProductsScreen(
+    portfolio: PortfolioStore, insights: ProductInsights, inbox: AttentionInbox, repositories: RepositoryState, github: GitHubApi,
+    onOpen: (Product) -> Unit, onCreate: () -> Unit,
+) {
     val sorted = portfolio.products.sortedWith(compareByDescending<Product> { it.focused }
         .thenBy { prioritySort(it.priority) }.thenBy { it.name.lowercase() })
+    // Each card's week line; checked one product at a time, at most every ten minutes per product.
+    LaunchedEffect(sorted.map { it.id to it.repositoryIds }, repositories.included) {
+        for (product in sorted) insights.refresh(product, product.repositoryIds.mapNotNull { repositories.find(it) }
+            .filter { it in repositories.included }, github::load)
+    }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -27,7 +35,11 @@ internal fun ProductsScreen(portfolio: PortfolioStore, onOpen: (Product) -> Unit
             if (portfolio.products.isEmpty() && portfolio.error == null) item {
                 Notice("No products yet", "A product groups related repositories with its stage, priority and next step.")
             }
-            items(sorted, key = { it.id }) { product -> ProductCard(product) { onOpen(product) } }
+            items(sorted, key = { it.id }) { product ->
+                val failing = mergeAttention(productAttention(product, inbox.feedItems, repositories.excluded)
+                    .filter { it.kind == AttentionKind.ChecksFailing || it.kind == AttentionKind.WorkflowFailed }).size
+                ProductCard(product, week = insights.weeks[product.id]?.let { weekLine(it, failing) ?: "This week: quiet" }) { onOpen(product) }
+            }
         }
         if (portfolio.error == null) ExtendedFloatingActionButton(onClick = onCreate,
             icon = { Icon(Icons.Default.Add, contentDescription = null) }, text = { Text("New product") },
@@ -38,7 +50,7 @@ internal fun ProductsScreen(portfolio: PortfolioStore, onOpen: (Product) -> Unit
 @Composable
 internal fun ProductScreen(
     portfolio: PortfolioStore, repositories: RepositoryState, inbox: AttentionInbox, delegations: DelegationTracker,
-    assistant: OnDeviceAssistant, github: GitHubApi,
+    assistant: OnDeviceAssistant, github: GitHubApi, insights: ProductInsights,
     productId: String, onBack: () -> Unit, onEdit: () -> Unit, onOpenRepo: (Repo, String) -> Unit,
 ) {
     val product = portfolio.find(productId)
@@ -85,6 +97,9 @@ internal fun ProductScreen(
         }
         portfolio.error?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
         item { Box(Modifier.padding(horizontal = ScreenGutter)) { ProductOverview(product) } }
+        item { Box(Modifier.padding(horizontal = ScreenGutter)) {
+            VardeCard { ProductThisWeek(github, insights, inbox, delegations, repositories, product, available, onOpenRepo) }
+        } }
         item {
             OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth().padding(horizontal = ScreenGutter)) {
                 Text("Prepare agent handover")
@@ -101,12 +116,11 @@ internal fun ProductScreen(
                 NavRow(repo.name, repo.owner) { onOpenRepo(repo, "overview") }
             }
         }
-        item { Box(Modifier.padding(horizontal = ScreenGutter)) { ProductActivity(github, inbox, repositories, product, available, onOpenRepo) } }
     }
 }
 
 @Composable
-internal fun ProductCard(product: Product, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun ProductCard(product: Product, modifier: Modifier = Modifier, week: String? = null, onClick: () -> Unit) {
     val open = product.work.count { !it.done }
     VardeCard(modifier, onClick = onClick) {
         Text(product.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -120,6 +134,7 @@ internal fun ProductCard(product: Product, modifier: Modifier = Modifier, onClic
             if (open > 0) "$open open work items" else null,
             "${product.repositoryIds.size} linked repositories",
         ).joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        week?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
     }
 }
 
