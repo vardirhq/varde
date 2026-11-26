@@ -58,6 +58,22 @@ internal fun SettingsScreen(
         item { AssistanceSettings(assistant, onSetAssistance, onDownloadModel, onTestAssistant) }
         item { SectionHeader("Portfolio") }
         item { VardeCard { PortfolioBackupControls(portfolio) } }
+        item { SectionHeader("About") }
+        item { SupportCard() }
+    }
+}
+
+internal const val SupportUrl = "https://buymeacoffee.com/madsendev"
+
+/** Version, and a way to support development. Opens in the browser; Varde handles no payments. */
+@Composable
+private fun SupportCard() {
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    VardeCard {
+        Text("Varde ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
+        Text("No ads, no tracking. If Varde saves you time, you can buy the developer a coffee.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton(onClick = { runCatching { uri.openUri(SupportUrl) } }) { Text("☕  Buy me a coffee") }
     }
 }
 
