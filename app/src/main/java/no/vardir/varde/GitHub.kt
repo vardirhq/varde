@@ -136,6 +136,20 @@ class GitHub(private val clientId: String) {
             }
         } catch (e: java.io.IOException) { throw WriteOutcomeUnknown(e) }
     }
+    /** Raw file bytes from the contents API (works for private repositories and files over 1 MB), capped at [maxBytes]. */
+    internal suspend fun rawFile(path: String, token: String, maxBytes: Long): ByteArray = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url("https://api.github.com/$path").header("Authorization", "Bearer $token")
+            .header("Accept", "application/vnd.github.raw").header("X-GitHub-Api-Version", "2022-11-28").build()
+        http.newBuilder().followRedirects(true).followSslRedirects(false).build().newCall(request).execute().use { response ->
+            if (response.code == 401) throw Unauthorized()
+            check(response.isSuccessful) { "GitHub request failed (HTTP ${response.code})" }
+            val body = response.body ?: error("Empty GitHub response")
+            check(body.contentLength() <= maxBytes) { "File too large to show." }
+            val bytes = body.source().apply { request(maxBytes + 1) }.buffer.let { buffer -> buffer.readByteArray(minOf(buffer.size, maxBytes + 1)) }
+            check(bytes.size <= maxBytes) { "File too large to show." }
+            bytes
+        }
+    }
     internal suspend fun jobLog(path: String, token: String): String = withContext(Dispatchers.IO) {
         // OkHttp strips the Authorization header when GitHub redirects to a different host.
         val client = http.newBuilder().followRedirects(true).followSslRedirects(false).build()

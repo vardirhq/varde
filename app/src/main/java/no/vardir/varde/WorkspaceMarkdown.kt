@@ -1,6 +1,11 @@
 package no.vardir.varde
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
@@ -54,7 +59,8 @@ private fun MarkdownChildren(parent: Node) {
                 2 -> MaterialTheme.typography.titleLarge
                 else -> MaterialTheme.typography.titleMedium
             }, bold = true)
-            is org.commonmark.node.Paragraph -> MarkdownInline(current, MaterialTheme.typography.bodyMedium)
+            is org.commonmark.node.Paragraph -> paragraphImages(current)?.let { MarkdownImages(it, LocalLinkBase.current) }
+                ?: MarkdownInline(current, MaterialTheme.typography.bodyMedium)
             is FencedCodeBlock -> WorkspaceCode(current.literal.trimEnd(), current.info)
             is IndentedCodeBlock -> WorkspaceCode(current.literal.trimEnd(), "")
             is BlockQuote -> Row(Modifier.fillMaxWidth()) {
@@ -81,7 +87,14 @@ private fun MarkdownChildren(parent: Node) {
                 }
             }
             is ThematicBreak -> HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-            is HtmlBlock -> Text(current.literal, style = MaterialTheme.typography.bodySmall)
+            // README authors use HTML mostly for image rows and centering; show the images and the plain text.
+            is HtmlBlock -> {
+                val images = htmlImages(current.literal)
+                if (images.isNotEmpty()) MarkdownImages(images, LocalLinkBase.current)
+                val text = stripHtml(current.literal)
+                if (text.isNotBlank()) Text(text, style = MaterialTheme.typography.bodyMedium)
+            }
+            is org.commonmark.ext.gfm.tables.TableBlock -> MarkdownTable(current)
             else -> if (current.firstChild != null) MarkdownChildren(current)
         }
         node = current.next
@@ -89,7 +102,7 @@ private fun MarkdownChildren(parent: Node) {
 }
 
 @Composable
-private fun MarkdownInline(node: Node, style: TextStyle, bold: Boolean = false) {
+private fun MarkdownInline(node: Node, style: TextStyle, bold: Boolean = false, wrap: Boolean = true) {
     val uri = LocalUriHandler.current
     val linkColor = MaterialTheme.colorScheme.primary
     val contentColor = MaterialTheme.colorScheme.onSurface
@@ -112,7 +125,9 @@ private fun MarkdownInline(node: Node, style: TextStyle, bold: Boolean = false) 
                             pop()
                         }
                         is Image -> visit(current)
-                        is HtmlInline -> append(current.literal)
+                        is HtmlInline -> append(stripHtml(current.literal).ifEmpty { if (current.literal.startsWith("<br", true)) "\n" else "" })
+                        is org.commonmark.ext.gfm.strikethrough.Strikethrough ->
+                            withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { visit(current) }
                         else -> visit(current)
                     }
                     child = current.next
@@ -124,7 +139,8 @@ private fun MarkdownInline(node: Node, style: TextStyle, bold: Boolean = false) 
     val linkBase = LocalLinkBase.current
     val inApp = LocalInAppLink.current
     ClickableText(text = annotated, style = style.copy(color = contentColor,
-        fontWeight = if (bold) FontWeight.Bold else style.fontWeight), onClick = { offset ->
+        fontWeight = if (bold) FontWeight.Bold else style.fontWeight), softWrap = wrap, maxLines = if (wrap) Int.MAX_VALUE else 1,
+        overflow = if (wrap) TextOverflow.Clip else TextOverflow.Ellipsis, onClick = { offset ->
         annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item
             ?.let { resolveLink(it, linkBase) }?.let { url -> if (!inApp(url)) runCatching { uri.openUri(url) } }
     })
@@ -148,8 +164,49 @@ internal fun WorkspaceCode(code: String, languageHint: String) {
             }
         }
     }
+    // Code keeps its line structure (trees, tables, aligned columns) and scrolls sideways instead of wrapping.
     Text(highlighted, modifier = Modifier.fillMaxWidth()
-        .background(MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp)).padding(12.dp),
+        .background(MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp))
+        .horizontalScroll(rememberScrollState()).padding(12.dp),
         style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace,
-        color = MaterialTheme.colorScheme.onSurface)
+        color = MaterialTheme.colorScheme.onSurface, softWrap = false)
+}
+
+/** GitHub-style table: header row emphasized, cells on one line, the whole table scrolls sideways when wide. */
+@Composable
+private fun MarkdownTable(table: org.commonmark.ext.gfm.tables.TableBlock) {
+    val rows = mutableListOf<Pair<Boolean, List<Node>>>()
+    var section = table.firstChild
+    while (section != null) {
+        val header = section is org.commonmark.ext.gfm.tables.TableHead
+        var row = section.firstChild
+        while (row != null) {
+            val cells = mutableListOf<Node>()
+            var cell = row.firstChild
+            while (cell != null) { cells += cell; cell = cell.next }
+            rows += header to cells
+            row = row.next
+        }
+        section = section.next
+    }
+    val columns = rows.maxOfOrNull { it.second.size } ?: return
+    val line = MaterialTheme.colorScheme.outlineVariant
+    Row(Modifier.horizontalScroll(rememberScrollState()).height(IntrinsicSize.Min)
+        .border(1.dp, line, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
+        for (c in 0 until columns) {
+            Column(Modifier.width(IntrinsicSize.Max)) {
+                rows.forEachIndexed { index, (header, cells) ->
+                    Box(Modifier.fillMaxWidth().widthIn(max = 320.dp)
+                        .background(if (header) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainer)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        val cellNode = cells.getOrNull(c)
+                        if (cellNode != null) MarkdownInline(cellNode, MaterialTheme.typography.bodySmall, bold = header, wrap = false)
+                        else Text(" ", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (index < rows.lastIndex) HorizontalDivider(color = line)
+                }
+            }
+            if (c < columns - 1) VerticalDivider(Modifier.fillMaxHeight(), color = line)
+        }
+    }
 }

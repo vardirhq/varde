@@ -134,7 +134,8 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
       // Links to other docs in this repository open here instead of in the browser.
-      CompositionLocalProvider(LocalInAppLink provides { url ->
+      val images = remember(repo.id) { RepoImageLoader(github, repo) }
+      CompositionLocalProvider(LocalRepoImages provides images, LocalInAppLink provides { url ->
           repoBlobPath(url.substringBefore('#'), repo.owner, repo.name)?.takeIf { isDocPath(it) }?.let { navigate("files:$it"); true } ?: false
       }) {
       Column(Modifier.fillMaxSize()) {
