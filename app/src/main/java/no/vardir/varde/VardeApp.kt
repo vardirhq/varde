@@ -31,9 +31,11 @@ private enum class Tab(val label: String, val icon: ImageVector, val route: Any)
 }
 
 @Composable
-fun Varde(vm: AppViewModel = viewModel()) {
+internal fun Varde(vm: AppViewModel = viewModel(), link: RepositoryRoute? = null, onLinkHandled: () -> Unit = {}) {
     if (!vm.signedIn) { SignInScreen(vm); return }
     val nav = rememberNavController()
+    // A notification's page opens once signed in; the link stays pending until then.
+    LaunchedEffect(link) { link?.let { nav.navigate(it); onLinkHandled() } }
     val entry by nav.currentBackStackEntryAsState()
     val destination = entry?.destination
     val currentTab = Tab.entries.firstOrNull { tab -> destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true }
@@ -82,7 +84,7 @@ private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Mod
         }
         composable<ReposRoute> { ReposScreen(vm, repositories, onOpen = { openRepo(it, "overview") }) }
         composable<SettingsRoute> {
-            SettingsScreen(vm, vm.user, onSignOut = vm::logout, repositories, portfolio, onManageRepos = { nav.navigate(RepoVisibilityRoute) })
+            SettingsScreen(vm, vm.user, onSignOut = vm::logout, repositories, portfolio, vm.notifications, vm::setNotifications, onManageRepos = { nav.navigate(RepoVisibilityRoute) })
         }
         composable<RepoVisibilityRoute> { RepoVisibilityScreen(repositories, onBack = { nav.popBackStack() }) }
         composable<ProductRoute> { backStack ->
