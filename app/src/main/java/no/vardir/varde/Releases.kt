@@ -168,17 +168,28 @@ private fun DraftReleaseDialog(github: GitHubApi, assistant: OnDeviceAssistant?,
                         enabled = !generating && tag.isNotBlank() && (latest != null || commits.isNotEmpty())) {
                         summarizing = true; error = null
                         scope.launch {
-                            // Pull request titles describe changes best; commit subjects since the last release are the fallback.
+                            // Pull requests describe changes best: their titles plus what their authors wrote. Commit subjects
+                            // since the last release are the fallback. The model never sees code.
                             val list = githubNotes.ifBlank { runCatching { fetchGitHubNotes() }.getOrElse { if (it is CancellationException) throw it; "" } }
-                            val changes = changeTitles(list).ifEmpty { commitTitles(commits) }
-                            if (changes.isEmpty()) { summaryNote = "There are no changes since the last release to summarize."; summarizing = false; return@launch }
+                            val listed = releaseChanges(list).take(15)
+                            val changes = if (listed.isEmpty()) commitTitles(commits).take(30).map { ReleaseChange(it) } else listed.map { change ->
+                                val pull = change.pull ?: return@map change
+                                val body = try { JSONObject(github.load(repoApi(repo) + "/pulls/$pull").body).let { jsonText(it, "body") } }
+                                    catch (e: CancellationException) { throw e } catch (_: Exception) { "" }
+                                change.copy(details = pullSummary(body))
+                            }
+                            if (!worthSummarizing(changes)) {
+                                summaryNote = if (changes.isEmpty()) "There are no changes since the last release to summarize."
+                                    else "There's only one change, and nothing written about it beyond its title, so a summary would just repeat it."
+                                summarizing = false; return@launch
+                            }
                             when (val result = assistant.use { draftReleaseSummary(it, tag, changes) }) {
                                 is AssistResult.Done -> {
                                     beforeSummary = notes
                                     // The factual list stays as GitHub wrote it; the summary goes above it.
                                     val base = notes.ifBlank { list }
                                     notes = result.value + if (base.isBlank()) "" else "\n\n" + base
-                                    summaryNote = "The summary at the top was written on this phone by on-device AI from ${changes.size} change titles. " +
+                                    summaryNote = "The summary at the top was written on this phone by on-device AI from ${changes.size} " + (if (changes.size == 1) "change" else "changes") + " and their descriptions. " +
                                         "Check it before publishing. The list below it is GitHub's."
                                 }
                                 is AssistResult.Failed -> summaryNote = "Couldn't write a summary; the notes are unchanged. ${result.reason}"
