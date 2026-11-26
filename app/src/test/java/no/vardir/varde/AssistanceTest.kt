@@ -1,0 +1,78 @@
+package no.vardir.varde
+
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Test
+
+class AssistanceTest {
+    private class FakeModel(val limit: Int = 4000, val reply: (String) -> String) : TextModel {
+        val prompts = mutableListOf<String>()
+        override suspend fun status() = ModelStatus.Available
+        override fun download() = emptyFlow<DownloadState>()
+        override suspend fun tokenLimit() = limit
+        override suspend fun generate(prompt: String, maxOutputTokens: Int): String { prompts += prompt; return reply(prompt) }
+    }
+
+    @Test fun parsesTaskAndCriteria() {
+        val draft = parseBriefDraft("""
+            TASK: Make the deploy job retry flaky uploads.
+            CRITERIA:
+            - Upload step retries up to 3 times
+            2. Job fails with a clear message after the last retry
+            * Existing tests still pass
+        """.trimIndent())!!
+        assertEquals("Make the deploy job retry flaky uploads.", draft.task)
+        assertEquals(3, draft.criteria.size)
+        assertEquals("Job fails with a clear message after the last retry", draft.criteria[1])
+        assertTrue(draft.asRequest().contains("Acceptance criteria:\n- Upload step retries up to 3 times"))
+    }
+
+    @Test fun draftNeverCarriesTrackingIds() {
+        val draft = parseBriefDraft("TASK: Fix login varde12345678\nCRITERIA:\n- Tracking ID: varde12345678\n- Login works")!!
+        assertFalse(draft.asRequest().contains("varde12345678"))
+        assertEquals(listOf("Login works"), draft.criteria)
+    }
+
+    @Test fun unstructuredOrEmptyOutput() {
+        assertEquals("Just do the thing.", parseBriefDraft("Just do the thing.")!!.task)
+        assertNull(parseBriefDraft("   "))
+        assertNull(parseBriefDraft("```\n```"))
+    }
+
+    @Test fun promptsStayWithinTheModelLimit() = runBlocking {
+        val model = FakeModel(limit = 1000) { "TASK: ok" }
+        draftBrief(model, "Fix it", "x".repeat(50_000))
+        val budgetChars = (1000 - 400) * 3
+        assertTrue(model.prompts.single().length <= budgetChars + 200)
+    }
+
+    @Test fun rewriteCleansPreamblesAndRejectsRunaways() {
+        assertEquals("Please add a test for the offline case.", cleanRewrite("Here is the rewritten comment:\n\"Please add a test for the offline case.\"", "add test offline"))
+        assertNull(cleanRewrite("", "x"))
+        assertNull(cleanRewrite("y".repeat(1000), "short"))
+        runBlocking {
+            assertEquals("Clearer.", rewriteComment(FakeModel { "Clearer." }, "unclear"))
+        }
+    }
+
+    @Test fun logSuggestionsOnlyUseRealLinesTheModelSaw() = runBlocking {
+        val log = (1..100).joinToString("\n") { if (it == 60) "ERROR: upload failed: 403" else "step $it ok" }
+        val model = FakeModel { "60, 61, 999, 3" } // 999 doesn't exist; 3 wasn't shown (no keyword, not in the tail)
+        val excerpt = suggestLogExcerpt(model, log)!!
+        assertTrue(excerpt.contains("ERROR: upload failed: 403"))
+        assertFalse(excerpt.contains("step 3 ok\n"))
+        excerpt.lines().filter { it != "…" }.forEach { assertTrue(it in log.lines()) }
+    }
+
+    @Test fun lineNumberParsingIsBounded() {
+        assertEquals(listOf(5, 7), parseLineNumbers("Lines 5 and 7, also 5 and 42", setOf(5, 7, 9)))
+        assertTrue(parseLineNumbers("no numbers", setOf(1)).isEmpty())
+        assertEquals("b\nc\nd", excerptAround("a\nb\nc\nd\ne", listOf(3), context = 1))
+        assertEquals("a\n…\ne", excerptAround("a\nb\nc\nd\ne", listOf(1, 5), context = 0))
+    }
+
+    @Test fun budgetNeverNegative() {
+        assertEquals(0, inputBudget(tokenLimit = 100, outputTokens = 400, fixedPromptChars = 500))
+    }
+}

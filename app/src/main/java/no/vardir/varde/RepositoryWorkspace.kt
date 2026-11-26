@@ -26,7 +26,7 @@ import java.util.Date
 private data class WorkspaceLink(val title: String, val subtitle: String, val route: String, val status: StatusLabel? = null)
 
 @Composable
-internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTracker, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
+internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTracker, assistant: OnDeviceAssistant, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
     var payload by remember { mutableStateOf<CachedResponse?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -94,13 +94,13 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
         val data = payload
         if (number != null && data != null) {
             val sha = runCatching { JSONObject(data.body).optJSONObject("head")?.optString("sha").orEmpty() }.getOrDefault("")
-            GitHubActionDialog(github, repo, number, kind, sha, page.startsWith("pull:"),
+            GitHubActionDialog(github, assistant, repo, number, kind, sha, page.startsWith("pull:"),
                 onDismiss = { writeKind = null; generation++ }, onSuccess = {
                     writeKind = null; writeMessage = "GitHub accepted the action."; generation++
                 })
         }
     }
-    if (showHandover) HandoverDialog(github, delegations, repo, page, payload) { showHandover = false }
+    if (showHandover) HandoverDialog(github, delegations, assistant, repo, page, payload) { showHandover = false }
     if (confirmRerun) AlertDialog(
         onDismissRequest = { confirmRerun = false },
         title = { Text("Rerun failed jobs?") },
@@ -150,7 +150,7 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                     Notice("Offline copy", "Saved ${DateFormat.getDateTimeInstance().format(Date(response.savedAt))}")
                 }
                 if (page.startsWith("log:")) {
-                    item { JobLogPanel(response.body) }
+                    item { JobLogPanel(response.body, assistant) }
                 } else if (page.startsWith("pull:")) {
                     val pr = runCatching { parsePullRequest(response.body) }.getOrNull()
                     if (pr == null) item { Notice("Couldn't read this pull request", "The GitHub response could not be displayed.", NoticeKind.Error) }

@@ -37,7 +37,8 @@ internal fun ProductsScreen(portfolio: PortfolioStore, onOpen: (Product) -> Unit
 
 @Composable
 internal fun ProductScreen(
-    portfolio: PortfolioStore, repositories: RepositoryState, inbox: AttentionInbox, delegations: DelegationTracker, github: GitHubApi,
+    portfolio: PortfolioStore, repositories: RepositoryState, inbox: AttentionInbox, delegations: DelegationTracker,
+    assistant: OnDeviceAssistant, github: GitHubApi,
     productId: String, onBack: () -> Unit, onEdit: () -> Unit, onOpenRepo: (Repo, String) -> Unit,
 ) {
     val product = portfolio.find(productId)
@@ -53,7 +54,7 @@ internal fun ProductScreen(
     }
     val available = product.repositoryIds.mapNotNull { id -> repositories.included.firstOrNull { it.id == id } }
     val missing = product.repositoryIds.size - available.size
-    if (showHandover) ProductHandover(github, inbox, repositories, delegations, product, available) { showHandover = false }
+    if (showHandover) ProductHandover(github, inbox, repositories, delegations, assistant, product, available) { showHandover = false }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
         title = { Text("Delete ${product.name}?") },
         text = { Text("This removes the local product, notes, and milestones. GitHub repositories are unchanged.") },

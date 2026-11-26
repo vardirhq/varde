@@ -28,7 +28,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun SettingsScreen(
     sync: SyncInfo, user: String, onSignOut: () -> Unit, repositories: RepositoryState, portfolio: PortfolioStore,
-    notifications: NotificationPrefs, onSetNotifications: (Boolean) -> Unit, onManageRepos: () -> Unit,
+    notifications: NotificationPrefs, onSetNotifications: (Boolean) -> Unit,
+    assistant: OnDeviceAssistant, onSetAssistance: (Boolean) -> Unit, onDownloadModel: () -> Unit, onManageRepos: () -> Unit,
 ) {
     val visible = repositories.included.size
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 24.dp),
@@ -52,6 +53,8 @@ internal fun SettingsScreen(
         }
         item { SectionHeader("Notifications") }
         item { NotificationSettings(notifications, onSetNotifications) }
+        item { SectionHeader("On-device assistance") }
+        item { AssistanceSettings(assistant, onSetAssistance, onDownloadModel) }
         item { SectionHeader("Portfolio") }
         item { VardeCard { PortfolioBackupControls(portfolio) } }
     }
@@ -135,5 +138,42 @@ private fun SwitchRow(title: String, detail: String, checked: Boolean, onChange:
         }
         Spacer(Modifier.width(12.dp))
         Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+@Composable
+private fun AssistanceSettings(assistant: OnDeviceAssistant, onSet: (Boolean) -> Unit, onDownload: () -> Unit) {
+    VardeCard(contentPadding = PaddingValues(vertical = 8.dp)) {
+        SwitchRow("Use on-device AI", "Drafts handover tasks and acceptance criteria, rewrites review comments and suggests important log lines, using Gemini Nano on this phone. Everything it writes stays editable.",
+            assistant.enabled, onSet)
+        if (assistant.enabled) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val downloading = assistant.downloadedBytes != null
+                when {
+                    downloading -> {
+                        Text("Downloading the model…", style = MaterialTheme.typography.bodyMedium)
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        val mb = (assistant.downloadedBytes ?: 0) / 1_000_000
+                        if (mb > 0) Text("$mb MB so far", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    assistant.status == null -> Text("Checking this phone…", style = MaterialTheme.typography.bodyMedium)
+                    assistant.status == ModelStatus.Unavailable -> Notice("Not available on this phone",
+                        "Gemini Nano runs on recent phones with Google's AICore. Varde works the same without it.", NoticeKind.Warning)
+                    assistant.status == ModelStatus.Downloadable -> {
+                        Text("The model needs to be downloaded once. Android manages the download and may wait for Wi-Fi; the model is shared with other apps.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Button(onClick = onDownload) { Text("Download model") }
+                    }
+                    assistant.status == ModelStatus.Downloading -> Text("Android is downloading the model. This can take a while.",
+                        style = MaterialTheme.typography.bodyMedium)
+                    else -> Text("Ready. Look for \"Draft task and criteria\" in handovers, \"Rewrite clearly\" in review comments and \"Suggest the important lines\" in job logs.",
+                        style = MaterialTheme.typography.bodyMedium)
+                }
+                assistant.downloadError?.let { Notice("Download failed", it, NoticeKind.Error) }
+                Text("Your text is processed on this phone. Repository instructions and tracking IDs are never given to the model. Varde starts Google's ML Kit only while this is on; ML Kit may send Google usage statistics about the feature, which according to Google don't include your text.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }

@@ -13,11 +13,14 @@ import org.json.JSONObject
 
 @Composable
 internal fun GitHubActionDialog(
-    github: GitHubApi, repo: Repo, number: Int, kind: WriteKind, reviewedSha: String,
+    github: GitHubApi, assistant: OnDeviceAssistant, repo: Repo, number: Int, kind: WriteKind, reviewedSha: String,
     isPull: Boolean, onDismiss: () -> Unit, onSuccess: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var body by remember { mutableStateOf("") }
+    var rewriting by remember { mutableStateOf(false) }
+    var beforeRewrite by remember { mutableStateOf<String?>(null) }
+    var rewriteNote by remember { mutableStateOf<String?>(null) }
     var mergeMethod by remember { mutableStateOf("merge") }
     var busy by remember { mutableStateOf(false) }
     var outcomeUnknown by remember { mutableStateOf(false) }
@@ -91,8 +94,18 @@ internal fun GitHubActionDialog(
                         }
                     } else Text("Method: $mergeMethod")
                 } else if (!confirmation) {
-                    OutlinedTextField(body, { body = it }, Modifier.fillMaxWidth(),
+                    OutlinedTextField(body, { body = it; beforeRewrite = null; rewriteNote = null }, Modifier.fillMaxWidth(),
                         label = { Text(if (kind == WriteKind.APPROVE) "Comment (optional)" else "Comment") }, minLines = 3)
+                    if (assistant.ready) AssistButton("Rewrite clearly", rewriting, enabled = body.isNotBlank()) {
+                        rewriting = true
+                        scope.launch {
+                            val result = assistant.use { rewriteComment(it, body) }
+                            if (result != null) { beforeRewrite = body; body = result; rewriteNote = "Rewritten on this phone by on-device AI. Check it before submitting." }
+                            else rewriteNote = "Couldn't rewrite on this phone. Your text is unchanged."
+                            rewriting = false
+                        }
+                    }
+                    rewriteNote?.let { note -> GeneratedNote(note, beforeRewrite?.let { previous -> { body = previous; beforeRewrite = null; rewriteNote = null } }) }
                 } else if (body.isNotBlank()) Text(body)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 if (confirmation) Text("This will submit to GitHub.", color = MaterialTheme.colorScheme.primary)

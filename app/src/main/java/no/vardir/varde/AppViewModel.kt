@@ -43,6 +43,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
     internal val delegations = DelegationTracker(application.applicationContext)
     private var delegationJob: Job? = null
     internal val notifications = NotificationPrefs(application.applicationContext)
+    /** Optional on-device assistance; ML Kit is only touched once it has been switched on. */
+    internal val assistant = OnDeviceAssistant(application.applicationContext) { MlKitTextModel(application.applicationContext) }
     private val appContext = application.applicationContext
     override val snapshotTime: Long? get() = repositories.snapshotTime
 
@@ -58,7 +60,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
             refresh()
             if (notifications.enabled) BackgroundChecks.schedule(appContext)
         }
+        if (assistant.enabled) viewModelScope.launch { assistant.refresh() }
     }
+
+    internal fun setAssistance(enabled: Boolean) { viewModelScope.launch { assistant.setEnabled(enabled) } }
+    internal fun downloadAssistantModel() { viewModelScope.launch { assistant.download() } }
 
     /** Turns background checks on or off. Permission is requested by the caller before enabling. */
     internal fun setNotifications(enabled: Boolean) {
