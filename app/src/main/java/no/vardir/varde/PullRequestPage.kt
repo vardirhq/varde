@@ -22,7 +22,10 @@ private const val DescriptionPreview = 600
 internal fun PullRequestPage(
     github: GitHubApi, repo: Repo, pr: PullRequest, cached: Boolean,
     onNavigate: (String) -> Unit, onAction: (WriteKind) -> Unit, onHandover: () -> Unit, onOpenUrl: (String) -> Unit,
+    onChanged: (String) -> Unit = {},
 ) {
+    var pending by remember { mutableStateOf<PullChange?>(null) }
+    pending?.let { change -> PullChangeDialog(github, repo, pr, change, onDismiss = { pending = null }, onDone = { pending = null; onChanged(it) }) }
     var checks by remember(pr.headSha) { mutableStateOf<CheckSummary?>(null) }
     var checksLoading by remember(pr.headSha) { mutableStateOf(true) }
     LaunchedEffect(repo.id, pr.headSha) {
@@ -96,9 +99,16 @@ internal fun PullRequestPage(
                 OutlinedButton(onClick = { onAction(WriteKind.COMMENT) }, modifier = Modifier.fillMaxWidth()) { Text("Comment") }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 // Merge is never hidden (branch protection is GitHub's call), but it is only emphasized when the evidence says it's ready.
+                if (pr.draft) OutlinedButton(onClick = { pending = PullChange.Ready }, enabled = pr.nodeId.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()) { Text("Mark ready for review…") }
+                if (pr.mergeableState == "behind") OutlinedButton(onClick = { pending = PullChange.UpdateBranch }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Update branch from ${pr.baseRef}…")
+                }
                 if (verdict.readyToMerge && !pr.draft) Button(onClick = { onAction(WriteKind.MERGE) }, modifier = Modifier.fillMaxWidth()) { Text("Merge…") }
                 else OutlinedButton(onClick = { onAction(WriteKind.MERGE) }, enabled = !pr.draft && !checksLoading,
                     modifier = Modifier.fillMaxWidth()) { Text(if (pr.draft) "Drafts can't be merged" else "Merge anyway…") }
+                TextButton(onClick = { pending = PullChange.Close }, modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Close without merging…") }
             }
         }
         if (pr.htmlUrl.startsWith("https://github.com/")) TextButton(onClick = { onOpenUrl(pr.htmlUrl) }) { Text("Open on GitHub") }
@@ -106,3 +116,33 @@ internal fun PullRequestPage(
 }
 
 private fun plural(n: Int, word: String) = "$n $word" + if (n == 1) "" else "s"
+
+private enum class PullChange { Ready, UpdateBranch, Close }
+
+/** Confirms and makes one of the smaller pull request changes. Each is locked to the head commit you reviewed. */
+@Composable
+private fun PullChangeDialog(github: GitHubApi, repo: Repo, pr: PullRequest, change: PullChange, onDismiss: () -> Unit, onDone: (String) -> Unit) {
+    val path = repoApi(repo) + "/pulls/" + pr.number
+    when (change) {
+        PullChange.Ready -> ConfirmedWriteDialog("Mark #${pr.number} ready for review?",
+            "GitHub will take it out of draft and notify requested reviewers. Checks that only run on non-draft pull requests will start.",
+            "Mark ready", onDismiss, onDone) {
+            github.graphql("mutation(\$id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: \$id}) { pullRequest { isDraft } } }",
+                org.json.JSONObject().put("id", pr.nodeId), "Marking it ready for review")
+            "#${pr.number} is ready for review."
+        }
+        PullChange.UpdateBranch -> ConfirmedWriteDialog("Update ${pr.headRef}?",
+            "GitHub will merge the latest ${pr.baseRef} into ${pr.headRef}, adding a merge commit to the pull request. Checks will run again.",
+            "Update branch", onDismiss, onDone) {
+            github.send("PUT", "$path/update-branch", "Updating the branch", org.json.JSONObject().put("expected_head_sha", pr.headSha))
+            "GitHub is updating ${pr.headRef}. Refresh in a moment to see the new commit."
+        }
+        PullChange.Close -> ConfirmedWriteDialog("Close #${pr.number} without merging?",
+            "The pull request is closed on GitHub and its branch is kept. It can be reopened on GitHub.", "Close pull request",
+            onDismiss, onDone, destructive = true, field = WriteField("Comment (optional)", required = false)) { comment ->
+            if (comment.isNotBlank()) github.send("POST", repoApi(repo) + "/issues/${pr.number}/comments", "Commenting", org.json.JSONObject().put("body", comment))
+            github.send("PATCH", path, "Closing the pull request", org.json.JSONObject().put("state", "closed"))
+            "#${pr.number} is closed."
+        }
+    }
+}

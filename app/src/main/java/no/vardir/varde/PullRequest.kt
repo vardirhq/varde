@@ -26,6 +26,8 @@ internal data class PullRequest(
     val mergeableState: String,
     val updatedAt: String,
     val htmlUrl: String,
+    /** GraphQL ID, for writes only GraphQL offers. */
+    val nodeId: String = "",
 ) {
     val open get() = state == "open" && !merged
     val status get() = pullState(state, draft, merged)
@@ -56,6 +58,7 @@ internal fun parsePullRequest(body: String): PullRequest {
         mergeableState = jsonText(o, "mergeable_state"),
         updatedAt = jsonText(o, "updated_at"),
         htmlUrl = jsonText(o, "html_url"),
+        nodeId = jsonText(o, "node_id"),
     )
 }
 

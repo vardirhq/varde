@@ -1,6 +1,7 @@
 package no.vardir.varde
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,44 +11,45 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
+/**
+ * A changed file's diff. With [onCommentLine], tapping a line starts a review comment on it; lines are separate
+ * rows so each can be focused and activated with TalkBack too.
+ */
 @Composable
-internal fun DiffCard(title: String, patch: String, comments: List<String>, onOpen: (() -> Unit)?) {
+internal fun DiffCard(title: String, patch: String, comments: List<String>, onOpen: (() -> Unit)?, onCommentLine: ((DiffLine) -> Unit)? = null) {
     var expanded by remember(title, patch) { mutableStateOf(false) }
     val diff = VardeTheme.colors
-    val colored = remember(patch, diff) {
-        buildAnnotatedString {
-            patch.lines().forEachIndexed { index, line ->
-                if (index > 0) append("\n")
-                val start = length
-                append(line)
-                val color = when {
-                    line.startsWith("+") && !line.startsWith("+++") -> diff.diffAdded
-                    line.startsWith("-") && !line.startsWith("---") -> diff.diffRemoved
-                    line.startsWith("@@") -> diff.diffHunk
-                    else -> diff.diffContext
-                }
-                addStyle(SpanStyle(color = color), start, length)
-            }
-        }
-    }
+    val lines = remember(patch) { parsePatch(patch) }
     VardeCard(contentPadding = PaddingValues(6.dp)) {
         Column(Modifier.fillMaxWidth().padding(8.dp)) {
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
                 Text((if (expanded) "▾  " else "▸  ") + title, modifier = Modifier.weight(1f))
             }
             if (expanded) {
-                Text(colored, modifier = Modifier.fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp))
-                    .horizontalScroll(rememberScrollState()).padding(12.dp),
-                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, softWrap = false)
+                if (onCommentLine != null) Text("Tap a line to comment on it.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp))
+                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp))
+                    .horizontalScroll(rememberScrollState()).padding(vertical = 8.dp).width(IntrinsicSize.Max)) {
+                    lines.forEach { line ->
+                        val color = when (line.kind) {
+                            DiffKind.Added -> diff.diffAdded
+                            DiffKind.Removed -> diff.diffRemoved
+                            DiffKind.Hunk -> diff.diffHunk
+                            else -> diff.diffContext
+                        }
+                        val canComment = onCommentLine != null && line.line != null
+                        Text(line.text.ifEmpty { " " }, color = color, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                            softWrap = false, modifier = Modifier.fillMaxWidth()
+                                .then(if (canComment) Modifier.clickable(onClickLabel = "Comment on line ${line.line}") { onCommentLine?.invoke(line) } else Modifier)
+                                .padding(horizontal = 12.dp, vertical = 1.dp))
+                    }
+                }
                 if (comments.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
                     Text("Review comments", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)

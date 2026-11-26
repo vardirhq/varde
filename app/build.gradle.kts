@@ -13,8 +13,10 @@ android {
         applicationId = "no.vardir.varde"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI builds count up, so each APK installs as an update of the previous one.
+        val build = providers.environmentVariable("GITHUB_RUN_NUMBER").orElse("1").get().toInt()
+        versionCode = build
+        versionName = "0.1.$build"
         val clientId = providers.environmentVariable("GH_CLIENT_ID").orElse("").get()
         require(clientId.matches(Regex("[A-Za-z0-9_]*"))) { "Invalid GitHub client ID" }
         buildConfigField("String", "GH_CLIENT_ID", "\"$clientId\"")

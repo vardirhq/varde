@@ -38,6 +38,8 @@ internal fun HandoverDialog(
     var tracked by remember { mutableStateOf(false) }
     var trackError by remember { mutableStateOf<String?>(null) }
     val trackingId = remember { newTrackingId() }
+    var delivery by remember { mutableStateOf<AgentDelivery?>(null) }
+    var delivered by remember { mutableStateOf<String?>(null) }
     // A handover about an existing pull request follows that PR; otherwise the agent's new PR is found by tracking ID.
     val existingPull = if (page.startsWith("pull:") || page.startsWith("changes:")) page.substringAfter(':').toIntOrNull() else null
     val issueNumber = if (page.startsWith("issue:")) page.substringAfter(':').toIntOrNull() else null
@@ -48,6 +50,7 @@ internal fun HandoverDialog(
         }.orEmpty() else ""
         val title = request.lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }?.take(100)
             ?: existingPull?.let { "Follow-up on #$it" } ?: issueNumber?.let { "Issue #$it" } ?: "Agent task"
+
         tracked = delegations.add(Delegation(trackingId, repo.id, "${repo.owner}/${repo.name}", title,
             java.time.Instant.now().toString(), existingPull, sha))
         trackError = if (tracked) null else "Couldn't save tracking. The brief is unchanged."
@@ -133,6 +136,14 @@ internal fun HandoverDialog(
         warnings = missing
         loading = false
     }
+    fun taskTitle() = request.lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }?.take(100)
+        ?: issueNumber?.let { "Issue #$it" } ?: "Agent task"
+    delivery?.let { target ->
+        ConfirmedWriteDialog(target.label() + "?", target.explanation(repo), "Send", onDismiss = { delivery = null },
+            onDone = { delivery = null; delivered = it; record() }) {
+            deliverToAgent(github, repo, target, taskTitle(), draft.orEmpty())
+        }
+    }
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text("Agent handover") },
@@ -173,6 +184,15 @@ internal fun HandoverDialog(
                     if (tracked) Text("Tracking in the Inbox under Delegated.", style = MaterialTheme.typography.bodySmall,
                         color = VardeTheme.colors.success)
                     trackError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    // Agents that work from GitHub can take the brief directly, after confirmation.
+                    Text("Or send it to an agent on GitHub", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    delivered?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = VardeTheme.colors.success) }
+                    if (response?.cached == true) Text("Reconnect to send to GitHub.", style = MaterialTheme.typography.bodySmall)
+                    else agentDeliveries(existingPull, issueNumber).forEach { option ->
+                        OutlinedButton(onClick = { delivery = option }, enabled = !draft.isNullOrBlank(), modifier = Modifier.fillMaxWidth()) { Text(option.label() + "…") }
+                    }
+                    Text("Needs the Claude GitHub app or Copilot's coding agent set up for this repository.", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
