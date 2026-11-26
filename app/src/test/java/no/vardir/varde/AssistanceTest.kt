@@ -189,4 +189,35 @@ class AssistanceTest {
         assertFalse(seen.contains("@dev"))
         assertNull(draftReleaseSummary(model, "v0.2.0", emptyList()))
     }
+
+    // What Gemini Nano wrote for v0.1.1 with the second version of the prompt: too long, and cut off by the output limit.
+    private val second = "You can now draft a release summary from the changes button when on-device assistance is active. Debug builds are now named after the latest release tag and their CI run, such as 0.2.0-dev.57. A script now creates the release key on your computer with a random password and an EC P-256 key, setting the four signing secrets. Documentation now details the build names and the script.\n\n" +
+        "Release notes summaries are improved to provide more accurate information. For each pull request in GitHub's generated notes, the summary now includes the author's description summary. Lines that repeat previous information are"
+
+    @Test fun summariesAreHeldToTheAskedLength() {
+        val limited = limitReleaseSummary(cleanReleaseSummary(second)!!, changeCount = 2)!!
+        assertEquals(3, limited.split(Regex("(?<=[.!?])\\s+")).size)
+        assertTrue(limited.startsWith("You can now draft"))
+        assertFalse(limited.contains("Lines that repeat"))
+    }
+
+    @Test fun aCutOffLastSentenceIsDropped() {
+        assertEquals("You can now install builds from a run.", limitReleaseSummary("You can now install builds from a run. Lines that repeat are", changeCount = 1))
+        assertTrue(looksCutOff("Lines that repeat previous information are"))
+        assertFalse(looksCutOff("Debug builds show their release."))
+        assertFalse(looksCutOff("- Install builds from workflow runs"))
+    }
+
+    @Test fun bulletsOnlyForLargerReleases() {
+        val text = "Lots changed. Builds install in one tap.\n- One\n- Two\n- Three\n- Four\n- Five\n- Six"
+        assertEquals("Lots changed. Builds install in one tap.", limitReleaseSummary(text, changeCount = 3)!!.substringBefore("\n").let { limitReleaseSummary(text, 3) })
+        assertEquals("Lots changed. Builds install in one tap.\n\n- One\n- Two\n- Three\n- Four\n- Five", limitReleaseSummary(text, changeCount = 6))
+    }
+
+    @Test fun pullSummariesAreShortLeadSentences() {
+        val long = "## Summary\n\n- **Debug build names.** Debug builds are now named after the latest release tag. They fall back to 0.1.run before the first release. More detail here.\n" +
+            "- **A key script** creates the release key on your own computer. It refuses to replace a key.\n\n## Testing\n- ok"
+        assertEquals("Debug build names. Debug builds are now named after the latest release tag. A key script creates the release key on your own computer.", pullSummary(long))
+        assertTrue(pullSummary(pr19).length <= 450)
+    }
 }
