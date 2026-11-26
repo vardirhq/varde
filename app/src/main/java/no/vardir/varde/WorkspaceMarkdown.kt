@@ -8,7 +8,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -107,7 +106,11 @@ private fun MarkdownInline(node: Node, style: TextStyle, bold: Boolean = false, 
     val linkColor = MaterialTheme.colorScheme.primary
     val contentColor = MaterialTheme.colorScheme.onSurface
     val codeBackground = MaterialTheme.colorScheme.background
-    val annotated = remember(node, linkColor, codeBackground) {
+    val linkBase = LocalLinkBase.current
+    val inApp = LocalInAppLink.current
+    // Links are real link annotations, so TalkBack lists them and they can be focused and activated.
+    val annotated = remember(node, linkColor, codeBackground, linkBase, inApp) {
+        val linkStyle = TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
         buildAnnotatedString {
             fun visit(parent: Node) {
                 var child = parent.firstChild
@@ -120,9 +123,11 @@ private fun MarkdownInline(node: Node, style: TextStyle, bold: Boolean = false, 
                         is StrongEmphasis -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { visit(current) }
                         is Emphasis -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { visit(current) }
                         is Link -> {
-                            pushStringAnnotation("URL", current.destination)
-                            withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) { visit(current) }
-                            pop()
+                            val target = resolveLink(current.destination, linkBase)
+                            if (target == null) visit(current)
+                            else withLink(LinkAnnotation.Clickable(target, linkStyle) {
+                                if (!inApp(target)) runCatching { uri.openUri(target) }
+                            }) { visit(current) }
                         }
                         is Image -> visit(current)
                         is HtmlInline -> append(stripHtml(current.literal).ifEmpty { if (current.literal.startsWith("<br", true)) "\n" else "" })
@@ -136,14 +141,8 @@ private fun MarkdownInline(node: Node, style: TextStyle, bold: Boolean = false, 
             visit(node)
         }
     }
-    val linkBase = LocalLinkBase.current
-    val inApp = LocalInAppLink.current
-    ClickableText(text = annotated, style = style.copy(color = contentColor,
-        fontWeight = if (bold) FontWeight.Bold else style.fontWeight), softWrap = wrap, maxLines = if (wrap) Int.MAX_VALUE else 1,
-        overflow = if (wrap) TextOverflow.Clip else TextOverflow.Ellipsis, onClick = { offset ->
-        annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item
-            ?.let { resolveLink(it, linkBase) }?.let { url -> if (!inApp(url)) runCatching { uri.openUri(url) } }
-    })
+    Text(annotated, style = style.copy(color = contentColor, fontWeight = if (bold) FontWeight.Bold else style.fontWeight),
+        softWrap = wrap, maxLines = if (wrap) Int.MAX_VALUE else 1, overflow = if (wrap) TextOverflow.Clip else TextOverflow.Ellipsis)
 }
 
 @Composable

@@ -30,6 +30,7 @@ internal fun GitHubActionDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var prInfo by remember { mutableStateOf("") }
     var checks by remember { mutableStateOf("") }
+    var mergeMethods by remember { mutableStateOf(MergeMethods.map { it.first }) }
     val title = when (kind) {
         WriteKind.COMMENT -> "Add comment"
         WriteKind.APPROVE -> "Approve pull request"
@@ -52,6 +53,9 @@ internal fun GitHubActionDialog(
                 val base = pr.optJSONObject("base")?.optString("ref").orEmpty()
                 prInfo = "${jsonText(pr, "title")}\n$head → $base\nCommit: ${sha.take(12)}"
                 if (kind == WriteKind.MERGE) {
+                    // Offer only the merge methods the repository allows, so GitHub doesn't refuse after confirmation.
+                    runCatching { allowedMergeMethods(JSONObject(github.load(repoApi(repo)).body)) }.getOrNull()
+                        ?.takeIf { it.isNotEmpty() }?.let { allowed -> mergeMethods = allowed; if (mergeMethod !in allowed) mergeMethod = allowed.first() }
                     try {
                         val checkResponse = github.load(repoApi(repo) + "/commits/" + pathPart(sha) + "/check-runs?per_page=100")
                         val statusResponse = github.load(repoApi(repo) + "/commits/" + pathPart(sha) + "/status")
@@ -86,13 +90,13 @@ internal fun GitHubActionDialog(
                     Text("GitHub enforces branch rules and checks when you submit. The merge is locked to the displayed commit.",
                         style = MaterialTheme.typography.bodySmall)
                     if (!confirmation) {
-                        listOf("merge" to "Merge commit", "squash" to "Squash", "rebase" to "Rebase").forEach { (method, label) ->
+                        MergeMethods.filter { it.first in mergeMethods }.forEach { (method, label) ->
                             Row {
                                 RadioButton(selected = mergeMethod == method, onClick = { mergeMethod = method })
                                 Text(label, Modifier.padding(top = 12.dp))
                             }
                         }
-                    } else Text("Method: $mergeMethod")
+                    } else Text("Method: " + (MergeMethods.firstOrNull { it.first == mergeMethod }?.second ?: mergeMethod))
                 } else if (!confirmation) {
                     OutlinedTextField(body, { body = it; beforeRewrite = null; rewriteNote = null }, Modifier.fillMaxWidth(),
                         label = { Text(if (kind == WriteKind.APPROVE) "Comment (optional)" else "Comment") }, minLines = 3)
@@ -136,3 +140,10 @@ internal fun GitHubActionDialog(
         }
     )
 }
+
+private val MergeMethods = listOf("merge" to "Merge commit", "squash" to "Squash and merge", "rebase" to "Rebase and merge")
+
+/** Merge methods the repository allows, in GitHub's order; empty when the response doesn't say (no write access). */
+internal fun allowedMergeMethods(repo: JSONObject): List<String> = listOf(
+    "merge" to "allow_merge_commit", "squash" to "allow_squash_merge", "rebase" to "allow_rebase_merge",
+).filter { (_, field) -> repo.has(field) && repo.optBoolean(field) }.map { it.first }

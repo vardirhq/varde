@@ -25,7 +25,7 @@ class AttentionInboxTest {
 
     @Test fun itemsLeaveOutHiddenRepositories() = runBlocking {
         val inbox = AttentionInbox(this)
-        inbox.loadAssigned { listOf(item(1, "a"), item(2, "b")) }
+        inbox.loadAssigned { listOf(item(1, "a"), item(2, "b")) to false }
         assertEquals(listOf("a"), inbox.items(excluded = setOf(2L)).map { it.url })
         assertTrue(inbox.mayBeIncomplete(offline = true))
     }
@@ -48,7 +48,7 @@ class AttentionInboxTest {
 
     @Test fun clearResetsEverything() = runBlocking {
         val inbox = AttentionInbox(this)
-        inbox.loadAssigned { listOf(item(1, "a")) }
+        inbox.loadAssigned { listOf(item(1, "a")) to false }
         inbox.clear()
         assertTrue(inbox.assigned.isEmpty())
         assertFalse(inbox.assignedLoaded)

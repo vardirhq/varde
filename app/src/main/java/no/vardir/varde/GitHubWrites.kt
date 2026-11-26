@@ -19,9 +19,9 @@ internal data class WriteAction(
 )
 
 /** Build only valid, commit-anchored requests. GitHub remains the authority for permissions and branch rules. */
-internal fun buildWriteRequest(repo: Repo, action: WriteAction, token: String): Request {
+internal fun buildWriteRequest(repo: Repo, action: WriteAction, token: String, apiBase: String = "https://api.github.com/"): Request {
     require(action.number > 0)
-    val base = "https://api.github.com/" + repoApi(repo)
+    val base = apiBase + repoApi(repo)
     val payload = JSONObject()
     val url: String
     when (action.kind) {
@@ -54,10 +54,10 @@ internal fun buildWriteRequest(repo: Repo, action: WriteAction, token: String): 
     return if (action.kind == WriteKind.MERGE) request.put(body).build() else request.post(body).build()
 }
 
-internal fun buildCreateIssueRequest(repo: Repo, title: String, text: String, token: String): Request {
+internal fun buildCreateIssueRequest(repo: Repo, title: String, text: String, token: String, apiBase: String = "https://api.github.com/"): Request {
     require(title.isNotBlank())
     val payload = JSONObject().put("title", title).put("body", text).toString()
-    return Request.Builder().url("https://api.github.com/" + repoApi(repo) + "/issues")
+    return Request.Builder().url(apiBase + repoApi(repo) + "/issues")
         .header("Authorization", "Bearer $token").header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
         .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
