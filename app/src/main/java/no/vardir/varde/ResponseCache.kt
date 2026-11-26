@@ -39,15 +39,17 @@ internal class ResponseCache(private val dir: File, private val maxBytes: Long) 
             val temp = File(dir, target.name + ".tmp")
             temp.writeText(JSONObject().put("key", key).put("body", body).put("savedAt", savedAt).put("etag", etag).toString())
             if (!temp.renameTo(target)) { temp.delete(); return }
-            trim()
+            trim(keep = target)
         } catch (_: Exception) { /* A cache that can't be written is just a cache miss later. */ }
     }
 
-    private fun trim() {
+    /** Evicts least recently used files until well under the cap. [keep], the entry just written, is never evicted. */
+    private fun trim(keep: File) {
         val files = dir.listFiles()?.filter { it.isFile } ?: return
         var total = files.sumOf { it.length() }
         if (total <= maxBytes) return
-        for (f in files.sortedBy { it.lastModified() }) {
+        // Files written within one clock tick share a timestamp, so the name breaks ties and [keep] is skipped.
+        for (f in files.filter { it != keep }.sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.name })) {
             if (total <= maxBytes * 3 / 4) break
             total -= f.length()
             f.delete()
