@@ -14,12 +14,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 @Composable
 internal fun HandoverDialog(
-    github: GitHubApi, delegations: DelegationTracker, repo: Repo, page: String, response: CachedResponse?, onClose: () -> Unit,
+    github: GitHubApi, delegations: DelegationTracker, assistant: OnDeviceAssistant, repo: Repo, page: String,
+    response: CachedResponse?, onClose: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
+    var drafting by remember { mutableStateOf(false) }
+    var beforeDraft by remember { mutableStateOf<String?>(null) }
+    var draftNote by remember { mutableStateOf<String?>(null) }
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     var request by remember { mutableStateOf("") }
@@ -120,8 +126,19 @@ internal fun HandoverDialog(
                 if (draft == null) {
                     Text("Add your request, then review and edit the brief before copying or sharing it.",
                         style = MaterialTheme.typography.bodyMedium)
-                    OutlinedTextField(request, { request = it }, Modifier.fillMaxWidth(),
+                    OutlinedTextField(request, { request = it; beforeDraft = null; draftNote = null }, Modifier.fillMaxWidth(),
                         label = { Text("Task and acceptance criteria") }, minLines = 3)
+                    // The model sees the request and this screen's evidence, never repository instructions or the tracking ID.
+                    if (assistant.ready) AssistButton("Draft task and criteria", drafting, enabled = request.isNotBlank() && !loading) {
+                        drafting = true
+                        scope.launch {
+                            val result = assistant.use { draftBrief(it, request, listOf(evidence, additionalEvidence).filter { e -> e.isNotBlank() }.joinToString("\n\n")) }
+                            if (result != null) { beforeDraft = request; request = result.asRequest(); draftNote = DraftedNote }
+                            else draftNote = "Couldn't draft on this phone. Your text is unchanged."
+                            drafting = false
+                        }
+                    }
+                    draftNote?.let { note -> GeneratedNote(note, beforeDraft?.let { previous -> { request = previous; beforeDraft = null; draftNote = null } }) }
                     if (evidence.isNotBlank()) Text("Includes the current screen's selected evidence.",
                         style = MaterialTheme.typography.bodySmall)
                     if (response?.cached == true) Text("Current screen uses cached data.", color = MaterialTheme.colorScheme.primary)

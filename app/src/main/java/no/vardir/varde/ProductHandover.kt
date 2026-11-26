@@ -18,7 +18,8 @@ import org.json.JSONObject
 
 @Composable
 internal fun ProductHandover(
-    github: GitHubApi, inbox: AttentionInbox, repositories: RepositoryState, delegations: DelegationTracker, product: Product, repos: List<Repo>, onClose: () -> Unit) {
+    github: GitHubApi, inbox: AttentionInbox, repositories: RepositoryState, delegations: DelegationTracker, assistant: OnDeviceAssistant,
+    product: Product, repos: List<Repo>, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -28,6 +29,9 @@ internal fun ProductHandover(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var track by remember { mutableStateOf(delegations.error == null) }
+    var drafting by remember { mutableStateOf(false) }
+    var beforeDraft by remember { mutableStateOf<String?>(null) }
+    var draftNote by remember { mutableStateOf<String?>(null) }
     var trackRepoId by remember { mutableStateOf(repos.firstOrNull()?.id) }
     var trackMenu by remember { mutableStateOf(false) }
     var tracked by remember { mutableStateOf(false) }
@@ -53,7 +57,26 @@ internal fun ProductHandover(
                             Text("${repo.owner}/${repo.name}", Modifier.padding(top = 14.dp))
                         }
                     }
-                    OutlinedTextField(request, { request = it }, label = { Text("Task and acceptance criteria") }, minLines = 3)
+                    OutlinedTextField(request, { request = it; beforeDraft = null; draftNote = null }, label = { Text("Task and acceptance criteria") }, minLines = 3)
+                    // Context is the product's own notes and open work; repository instructions are added later, verbatim.
+                    if (assistant.ready) AssistButton("Draft task and criteria", drafting, enabled = request.isNotBlank() && !busy) {
+                        drafting = true
+                        scope.launch {
+                            val context = buildString {
+                                appendLine("Product: ${product.name} (${product.stage})")
+                                if (product.description.isNotBlank()) appendLine("Description: ${product.description}")
+                                if (product.next.isNotBlank()) appendLine("Next: ${product.next}")
+                                if (product.milestones.isNotBlank()) appendLine("Milestones: ${product.milestones}")
+                                product.work.filterNot { it.done }.take(15).forEach { appendLine("Open ${it.kind.lowercase()}: ${it.title}") }
+                                appendLine("Repositories: " + repos.filter { it.id in selected }.joinToString { "${it.owner}/${it.name}" })
+                            }
+                            val result = assistant.use { draftBrief(it, request, context) }
+                            if (result != null) { beforeDraft = request; request = result.asRequest(); draftNote = DraftedNote }
+                            else draftNote = "Couldn't draft on this phone. Your text is unchanged."
+                            drafting = false
+                        }
+                    }
+                    draftNote?.let { note -> GeneratedNote(note, beforeDraft?.let { previous -> { request = previous; beforeDraft = null; draftNote = null } }) }
                     TrackOption(track, enabled = delegations.error == null && trackRepo != null,
                         detail = "Adds a tracking ID for the agent to put in its pull request, then follows it in the Inbox.") { track = it }
                     if (track && trackRepo != null && selected.size > 1) Box {

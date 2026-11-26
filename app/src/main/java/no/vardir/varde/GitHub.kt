@@ -11,6 +11,7 @@ import android.os.SystemClock
 data class DeviceCode(val code: String, val userCode: String, val interval: Long, val expires: Long)
 data class Repo(val id: Long, val name: String, val owner: String, val description: String, val archived: Boolean, val privateRepo: Boolean, val url: String)
 class Unauthorized : Exception("GitHub session expired. Sign in again.")
+internal data class ConditionalResponse(val notModified: Boolean, val body: String, val etag: String)
 class GitHub(private val clientId: String) {
     private val http = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build()
     private suspend fun request(req: Request): String = withContext(Dispatchers.IO) {
@@ -56,6 +57,18 @@ class GitHub(private val clientId: String) {
     internal suspend fun get(path: String, token: String): String = request(Request.Builder()
         .url("https://api.github.com/$path").header("Authorization","Bearer $token")
         .header("Accept","application/vnd.github+json").header("X-GitHub-Api-Version","2022-11-28").build())
+    /** GET with If-None-Match. A 304 reply has no body and doesn't count against GitHub's primary rate limit. */
+    internal suspend fun getConditional(path: String, token: String, etag: String?): ConditionalResponse = withContext(Dispatchers.IO) {
+        val builder = Request.Builder().url("https://api.github.com/$path").header("Authorization", "Bearer $token")
+            .header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28")
+        if (!etag.isNullOrBlank()) builder.header("If-None-Match", etag)
+        http.newCall(builder.build()).execute().use { response ->
+            if (response.code == 401) throw Unauthorized()
+            if (response.code == 304) return@use ConditionalResponse(notModified = true, body = "", etag = etag.orEmpty())
+            check(response.isSuccessful) { "GitHub request failed (HTTP ${response.code})" }
+            ConditionalResponse(false, response.body?.string() ?: error("Empty GitHub response"), response.header("ETag").orEmpty())
+        }
+    }
     internal suspend fun submitWrite(repo: Repo, action: WriteAction, token: String) = withContext(Dispatchers.IO) {
         val request = buildWriteRequest(repo, action, token)
         try {

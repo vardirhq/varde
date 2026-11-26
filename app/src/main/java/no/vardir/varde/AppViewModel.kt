@@ -42,6 +42,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
     internal val inbox = AttentionInbox(viewModelScope)
     internal val delegations = DelegationTracker(application.applicationContext)
     private var delegationJob: Job? = null
+    internal val notifications = NotificationPrefs(application.applicationContext)
+    /** Optional on-device assistance; ML Kit is only touched once it has been switched on. */
+    internal val assistant = OnDeviceAssistant(application.applicationContext) { MlKitTextModel(application.applicationContext) }
+    private val appContext = application.applicationContext
     override val snapshotTime: Long? get() = repositories.snapshotTime
 
     init {
@@ -54,7 +58,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
                 repositories.open(previous, fromSnapshot = true)
             }
             refresh()
+            if (notifications.enabled) BackgroundChecks.schedule(appContext)
         }
+        if (assistant.enabled) viewModelScope.launch { assistant.refresh() }
+    }
+
+    internal fun setAssistance(enabled: Boolean) { viewModelScope.launch { assistant.setEnabled(enabled) } }
+    internal fun downloadAssistantModel() { viewModelScope.launch { assistant.download() } }
+
+    /** Turns background checks on or off. Permission is requested by the caller before enabling. */
+    internal fun setNotifications(enabled: Boolean) {
+        notifications.updateEnabled(enabled)
+        if (enabled && signedIn) BackgroundChecks.schedule(appContext) else BackgroundChecks.cancel(appContext)
     }
 
     private fun runTask(block: suspend () -> Unit) {
@@ -78,6 +93,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
         )
         store.save(access); token = access; signedIn = true
         sync(access)
+        if (notifications.enabled) BackgroundChecks.schedule(appContext)
     }
 
     private suspend fun sync(access: String) {
@@ -111,6 +127,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
     fun cancel() { job?.cancel() }
 
     private fun reset() {
+        BackgroundChecks.cancel(appContext); notifications.forgetAccounts(); ConditionalCache.clear(appContext)
         delegationJob?.cancel(); inbox.clear(); delegations.clear(); repositories.clear(); portfolio.clear()
         store.clear(); token = null; signedIn = false; user = ""
     }

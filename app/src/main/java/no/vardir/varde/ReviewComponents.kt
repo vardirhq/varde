@@ -15,6 +15,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 @Composable
@@ -62,14 +63,37 @@ internal fun DiffCard(title: String, patch: String, comments: List<String>, onOp
 }
 
 @Composable
-internal fun JobLogPanel(body: String) {
+internal fun JobLogPanel(body: String, assistant: OnDeviceAssistant) {
     val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    var suggesting by remember(body) { mutableStateOf(false) }
+    var suggestion by remember(body) { mutableStateOf<String?>(null) }
+    var suggestionFailed by remember(body) { mutableStateOf(false) }
     val excerpt = remember(body) { failureExcerpt(body) }
     var showFull by remember(body) { mutableStateOf(false) }
     VardeCard {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (excerpt.isNotBlank() && !showFull) "Possible error lines" else "Job log",
                 color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            // The model only picks line numbers; the suggestion is cut from the real log.
+            if (assistant.ready && suggestion == null) AssistButton("Suggest the important lines", suggesting) {
+                suggesting = true; suggestionFailed = false
+                scope.launch {
+                    suggestion = assistant.use { suggestLogExcerpt(it, body) }
+                    suggestionFailed = suggestion == null
+                    suggesting = false
+                }
+            }
+            if (suggestionFailed) Text("Couldn't suggest lines on this phone.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            suggestion?.let { lines ->
+                Text("Suggested lines", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                Text("Picked by on-device AI from this log. It may be wrong; the full log is below.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(lines, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface)
+                TextButton(onClick = { clipboard.setText(AnnotatedString(lines)) }) { Text("Copy suggested lines") }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
             if (excerpt.isNotBlank()) {
                 Text("Matches are selected by keywords and may not be the cause.", style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = { clipboard.setText(AnnotatedString(excerpt)) }) { Text("Copy error excerpt") }

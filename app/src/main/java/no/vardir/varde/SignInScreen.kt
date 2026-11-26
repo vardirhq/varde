@@ -27,7 +27,7 @@ internal fun SignInScreen(vm: AppViewModel) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState())
             .padding(horizontal = ScreenGutter, vertical = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Icon(painterResource(R.drawable.ic_varde_mark), contentDescription = null,
+            Icon(painterResource(R.drawable.ic_varde_glyph), contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
             Text("Varde", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
             Text("Plan, delegate, review and ship your products from your phone. GitHub stays the source of truth.",
