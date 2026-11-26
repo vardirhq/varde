@@ -99,9 +99,10 @@ internal fun GitHubActionDialog(
                     if (assistant.ready) AssistButton("Rewrite clearly", rewriting, enabled = body.isNotBlank()) {
                         rewriting = true
                         scope.launch {
-                            val result = assistant.use { rewriteComment(it, body) }
-                            if (result != null) { beforeRewrite = body; body = result; rewriteNote = "Rewritten on this phone by on-device AI. Check it before submitting." }
-                            else rewriteNote = "Couldn't rewrite on this phone. Your text is unchanged."
+                            when (val result = assistant.use { rewriteComment(it, body) }) {
+                                is AssistResult.Done -> { beforeRewrite = body; body = result.value; rewriteNote = "Rewritten on this phone by on-device AI. Check it before submitting." }
+                                is AssistResult.Failed -> rewriteNote = "Couldn't rewrite; your text is unchanged. ${result.reason}"
+                            }
                             rewriting = false
                         }
                     }

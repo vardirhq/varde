@@ -49,8 +49,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
-    // On-device assistance (optional, off by default). beta2 is the newest Prompt API release compatible with Kotlin 2.0.
-    implementation("com.google.mlkit:genai-prompt:1.0.0-beta2")
+    // On-device assistance (optional, off by default). Newer AICore versions (e.g. on Galaxy S26) need a recent client.
+    implementation("com.google.mlkit:genai-prompt:1.0.0-beta5")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")

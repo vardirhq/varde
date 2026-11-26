@@ -21,10 +21,39 @@ internal sealed interface DownloadState {
 /** The on-device model, behind an interface so features can be tested with a fake. */
 internal interface TextModel {
     suspend fun status(): ModelStatus
+    /** Why the last [status] call reported [ModelStatus.Unavailable], if it failed rather than answered. */
+    val statusError: Throwable? get() = null
     fun download(): kotlinx.coroutines.flow.Flow<DownloadState>
     /** Total tokens the model accepts for one request. */
     suspend fun tokenLimit(): Int
     suspend fun generate(prompt: String, maxOutputTokens: Int): String
+}
+
+/** A model failure with ML Kit's error code (see GenAiException.ErrorCode), kept free of ML Kit types. */
+internal class AssistException(val code: Int?, message: String?) : Exception(message)
+
+internal sealed interface AssistResult<out T> {
+    data class Done<T>(val value: T) : AssistResult<T>
+    data class Failed(val reason: String) : AssistResult<Nothing>
+}
+
+/** Explains a failure in words, so "it didn't work" comes with the reason and what to try. */
+internal fun assistFailure(error: Throwable?): String {
+    val code = (error as? AssistException)?.code
+    val detail = error?.message?.takeIf { it.isNotBlank() }?.take(160)
+    val reason = when (code) {
+        -101 -> "This phone's AICore version doesn't work with Varde's ML Kit client. Update \"Google AICore\" and \"Private Compute Services\" in the Play Store, then try again."
+        604 -> "Gemini Nano needs a system update on this phone. Check for Android and Google Play system updates."
+        8 -> "Gemini Nano isn't available right now. It may still be setting up after a download or update."
+        9 -> "The model is busy. Try again in a moment."
+        27 -> "Varde has used its on-device AI allowance for now. Try again later."
+        30 -> "On-device AI only runs while Varde is open on screen."
+        12 -> "That's too much text for the on-device model."
+        501 -> "Not enough free storage for the on-device model."
+        null -> if (error == null) "The model returned nothing usable. Try rewording your request." else "On-device AI failed."
+        else -> "On-device AI failed (error $code)."
+    }
+    return if (detail != null && code !in setOf(9, 27, 30)) "$reason\nDetails: $detail" else reason
 }
 
 /** Rough characters-per-token used to keep prompts inside the model's limit. Conservative for code and logs. */

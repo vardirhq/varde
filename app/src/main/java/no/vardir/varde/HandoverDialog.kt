@@ -132,9 +132,10 @@ internal fun HandoverDialog(
                     if (assistant.ready) AssistButton("Draft task and criteria", drafting, enabled = request.isNotBlank() && !loading) {
                         drafting = true
                         scope.launch {
-                            val result = assistant.use { draftBrief(it, request, listOf(evidence, additionalEvidence).filter { e -> e.isNotBlank() }.joinToString("\n\n")) }
-                            if (result != null) { beforeDraft = request; request = result.asRequest(); draftNote = DraftedNote }
-                            else draftNote = "Couldn't draft on this phone. Your text is unchanged."
+                            when (val result = assistant.use { draftBrief(it, request, listOf(evidence, additionalEvidence).filter { e -> e.isNotBlank() }.joinToString("\n\n")) }) {
+                                is AssistResult.Done -> { beforeDraft = request; request = result.value.asRequest(); draftNote = DraftedNote }
+                                is AssistResult.Failed -> draftNote = "Couldn't draft; your text is unchanged. ${result.reason}"
+                            }
                             drafting = false
                         }
                     }

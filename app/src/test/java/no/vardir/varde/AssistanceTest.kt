@@ -75,4 +75,14 @@ class AssistanceTest {
     @Test fun budgetNeverNegative() {
         assertEquals(0, inputBudget(tokenLimit = 100, outputTokens = 400, fixedPromptChars = 500))
     }
+
+    @Test fun failuresExplainThemselves() {
+        assertTrue(assistFailure(AssistException(-101, "incompatible")).contains("Google AICore"))
+        assertTrue(assistFailure(AssistException(-101, "incompatible")).contains("Details: incompatible"))
+        assertTrue(assistFailure(AssistException(30, "bg")).contains("open on screen"))
+        assertFalse(assistFailure(AssistException(30, "bg")).contains("Details"))
+        assertEquals("On-device AI failed (error 4).\nDetails: boom", assistFailure(AssistException(4, "boom")))
+        assertTrue(assistFailure(null).contains("nothing usable"))
+        assertEquals("On-device AI failed.\nDetails: x", assistFailure(IllegalStateException("x")))
+    }
 }

@@ -65,6 +65,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
 
     internal fun setAssistance(enabled: Boolean) { viewModelScope.launch { assistant.setEnabled(enabled) } }
     internal fun downloadAssistantModel() { viewModelScope.launch { assistant.download() } }
+    internal fun testAssistant() { viewModelScope.launch { assistant.test() } }
 
     /** Turns background checks on or off. Permission is requested by the caller before enabling. */
     internal fun setNotifications(enabled: Boolean) {

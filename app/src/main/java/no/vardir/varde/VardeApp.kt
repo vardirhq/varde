@@ -85,7 +85,7 @@ private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Mod
         composable<ReposRoute> { ReposScreen(vm, repositories, onOpen = { openRepo(it, "overview") }) }
         composable<SettingsRoute> {
             SettingsScreen(vm, vm.user, onSignOut = vm::logout, repositories, portfolio, vm.notifications, vm::setNotifications,
-                vm.assistant, vm::setAssistance, vm::downloadAssistantModel, onManageRepos = { nav.navigate(RepoVisibilityRoute) })
+                vm.assistant, vm::setAssistance, vm::downloadAssistantModel, vm::testAssistant, onManageRepos = { nav.navigate(RepoVisibilityRoute) })
         }
         composable<RepoVisibilityRoute> { RepoVisibilityScreen(repositories, onBack = { nav.popBackStack() }) }
         composable<ProductRoute> { backStack ->
