@@ -26,7 +26,7 @@ import java.util.Date
 private data class WorkspaceLink(val title: String, val subtitle: String, val route: String, val status: StatusLabel? = null)
 
 @Composable
-internal fun RepositoryWorkspace(github: GitHubApi, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
+internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTracker, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
     var payload by remember { mutableStateOf<CachedResponse?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
@@ -100,7 +100,7 @@ internal fun RepositoryWorkspace(github: GitHubApi, repo: Repo, page: String, on
                 })
         }
     }
-    if (showHandover) HandoverDialog(github, repo, page, payload) { showHandover = false }
+    if (showHandover) HandoverDialog(github, delegations, repo, page, payload) { showHandover = false }
     if (confirmRerun) AlertDialog(
         onDismissRequest = { confirmRerun = false },
         title = { Text("Rerun failed jobs?") },

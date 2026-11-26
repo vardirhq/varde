@@ -18,7 +18,7 @@ import org.json.JSONObject
 
 @Composable
 internal fun ProductHandover(
-    github: GitHubApi, inbox: AttentionInbox, repositories: RepositoryState, product: Product, repos: List<Repo>, onClose: () -> Unit) {
+    github: GitHubApi, inbox: AttentionInbox, repositories: RepositoryState, delegations: DelegationTracker, product: Product, repos: List<Repo>, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -27,6 +27,20 @@ internal fun ProductHandover(
     var draft by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var track by remember { mutableStateOf(delegations.error == null) }
+    var trackRepoId by remember { mutableStateOf(repos.firstOrNull()?.id) }
+    var trackMenu by remember { mutableStateOf(false) }
+    var tracked by remember { mutableStateOf(false) }
+    val trackingId = remember { newTrackingId() }
+    // The agent opens its pull request in one repository; follow that one.
+    val trackRepo = repos.firstOrNull { it.id == trackRepoId && it.id in selected } ?: repos.firstOrNull { it.id in selected }
+    fun record() {
+        val target = trackRepo
+        if (!track || tracked || target == null) return
+        val title = request.lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }?.take(100) ?: product.name
+        tracked = delegations.add(Delegation(trackingId, target.id, "${target.owner}/${target.name}", title, java.time.Instant.now().toString()))
+        if (!tracked) error = "Couldn't save tracking. The brief is unchanged."
+    }
     AlertDialog(onDismissRequest = { if (!busy) onClose() }, title = { Text("Product handover") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -40,10 +54,23 @@ internal fun ProductHandover(
                         }
                     }
                     OutlinedTextField(request, { request = it }, label = { Text("Task and acceptance criteria") }, minLines = 3)
+                    TrackOption(track, enabled = delegations.error == null && trackRepo != null,
+                        detail = "Adds a tracking ID for the agent to put in its pull request, then follows it in the Inbox.") { track = it }
+                    if (track && trackRepo != null && selected.size > 1) Box {
+                        OutlinedButton(onClick = { trackMenu = true }) { Text("Pull request expected in ${trackRepo.name}") }
+                        DropdownMenu(expanded = trackMenu, onDismissRequest = { trackMenu = false }) {
+                            repos.filter { it.id in selected }.forEach { candidate ->
+                                DropdownMenuItem(text = { Text("${candidate.owner}/${candidate.name}") },
+                                    onClick = { trackRepoId = candidate.id; trackMenu = false })
+                            }
+                        }
+                    }
                     if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 } else {
                     Text("Review before sharing; this brief may contain private product and repository information.", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(draft.orEmpty(), { draft = it }, label = { Text("Editable brief") }, minLines = 8)
+                    if (tracked) Text("Tracking in the Inbox under Delegated.", style = MaterialTheme.typography.bodySmall,
+                        color = VardeTheme.colors.success)
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
@@ -94,6 +121,7 @@ internal fun ProductHandover(
                             if (selectedAttention.isEmpty()) appendLine("No items in the available attention feed.")
                             selectedAttention.forEach { appendLine("- ${it.repository} · ${it.kind.label}: ${it.title} — ${it.url}") }
                             parts.forEach { appendLine("\n$it") }
+                            if (track && trackRepo != null) append(trackingInstruction(trackingId))
                         }
                     } catch (e: CancellationException) { throw e }
                     catch (_: Exception) { error = "Couldn't prepare the handover." }
@@ -101,11 +129,12 @@ internal fun ProductHandover(
                 }
             }) { Text("Review brief") }
             else TextButton(onClick = {
+                record()
                 context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, draft.orEmpty()), "Share handover"))
             }) { Text("Share") }
         },
         dismissButton = { Row {
-            if (draft != null) TextButton(onClick = { clipboard.setText(AnnotatedString(draft.orEmpty())) }) { Text("Copy") }
+            if (draft != null) TextButton(onClick = { record(); clipboard.setText(AnnotatedString(draft.orEmpty())) }) { Text("Copy") }
             TextButton(enabled = !busy, onClick = onClose) { Text("Close") }
         } })
 }

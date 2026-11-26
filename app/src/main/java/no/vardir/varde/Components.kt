@@ -1,13 +1,13 @@
 package no.vardir.varde
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
@@ -44,7 +44,8 @@ internal fun VardeCard(
     else Surface(onClick = onClick, modifier = modifier.fillMaxWidth(), shape = CardShape, color = color, border = border, content = body)
 }
 
-private data class ToneStyle(val content: Color, val container: Color, val icon: ImageVector)
+/** [icon] is null for neutral states, which show a plain dot so they never read as success or failure. */
+private data class ToneStyle(val content: Color, val container: Color, val icon: ImageVector?)
 
 @Composable
 private fun toneStyle(tone: StatusTone): ToneStyle {
@@ -53,7 +54,7 @@ private fun toneStyle(tone: StatusTone): ToneStyle {
         StatusTone.Success -> ToneStyle(c.success, c.successContainer, Icons.Default.CheckCircle)
         StatusTone.Failure -> ToneStyle(c.danger, c.dangerContainer, Icons.Default.Warning)
         StatusTone.Pending -> ToneStyle(c.pending, c.pendingContainer, Icons.Default.Refresh)
-        StatusTone.Neutral -> ToneStyle(c.neutral, c.neutralContainer, Icons.Default.Clear)
+        StatusTone.Neutral -> ToneStyle(c.neutral, c.neutralContainer, null)
     }
 }
 
@@ -63,7 +64,8 @@ internal fun StatusBadge(status: StatusLabel, modifier: Modifier = Modifier) {
     val style = toneStyle(status.tone)
     Surface(modifier, shape = RoundedCornerShape(50), color = style.container, contentColor = style.content) {
         Row(Modifier.padding(start = 8.dp, end = 10.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(style.icon, contentDescription = null, modifier = Modifier.size(14.dp))
+            if (style.icon != null) Icon(style.icon, contentDescription = null, modifier = Modifier.size(14.dp))
+            else Box(Modifier.padding(horizontal = 3.dp).size(8.dp).background(style.content, RoundedCornerShape(50)))
             Spacer(Modifier.width(4.dp))
             Text(status.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         }

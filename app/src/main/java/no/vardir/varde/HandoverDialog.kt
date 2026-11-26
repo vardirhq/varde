@@ -3,6 +3,7 @@ package no.vardir.varde
 import android.content.Intent
 import android.util.Base64
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -16,7 +17,9 @@ import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 
 @Composable
-internal fun HandoverDialog(github: GitHubApi, repo: Repo, page: String, response: CachedResponse?, onClose: () -> Unit) {
+internal fun HandoverDialog(
+    github: GitHubApi, delegations: DelegationTracker, repo: Repo, page: String, response: CachedResponse?, onClose: () -> Unit,
+) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     var request by remember { mutableStateOf("") }
@@ -25,6 +28,23 @@ internal fun HandoverDialog(github: GitHubApi, repo: Repo, page: String, respons
     var loading by remember { mutableStateOf(true) }
     var additionalEvidence by remember { mutableStateOf("") }
     var draft by remember { mutableStateOf<String?>(null) }
+    var track by remember { mutableStateOf(delegations.error == null) }
+    var tracked by remember { mutableStateOf(false) }
+    var trackError by remember { mutableStateOf<String?>(null) }
+    val trackingId = remember { newTrackingId() }
+    // A handover about an existing pull request follows that PR; otherwise the agent's new PR is found by tracking ID.
+    val existingPull = if (page.startsWith("pull:") || page.startsWith("changes:")) page.substringAfter(':').toIntOrNull() else null
+    fun record() {
+        if (!track || tracked) return
+        val sha = if (page.startsWith("pull:")) response?.let { r ->
+            runCatching { JSONObject(r.body).optJSONObject("head")?.optString("sha").orEmpty() }.getOrDefault("")
+        }.orEmpty() else ""
+        val title = request.lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }?.take(100)
+            ?: existingPull?.let { "Follow-up on #$it" } ?: "Agent task"
+        tracked = delegations.add(Delegation(trackingId, repo.id, "${repo.owner}/${repo.name}", title,
+            java.time.Instant.now().toString(), existingPull, sha))
+        trackError = if (tracked) null else "Couldn't save tracking. The brief is unchanged."
+    }
     val evidence = remember(page, response) {
         when {
             response == null -> ""
@@ -105,6 +125,9 @@ internal fun HandoverDialog(github: GitHubApi, repo: Repo, page: String, respons
                     if (evidence.isNotBlank()) Text("Includes the current screen's selected evidence.",
                         style = MaterialTheme.typography.bodySmall)
                     if (response?.cached == true) Text("Current screen uses cached data.", color = MaterialTheme.colorScheme.primary)
+                    TrackOption(track, enabled = delegations.error == null,
+                        detail = if (existingPull != null) "Follow #$existingPull in the Inbox until it's ready for review."
+                            else "Adds a tracking ID for the agent to put in its pull request, then follows it in the Inbox.") { track = it }
                     if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                     warnings.forEach { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     Text("Repository instructions are read from the default branch; check nested instructions and the target branch.",
@@ -114,15 +137,20 @@ internal fun HandoverDialog(github: GitHubApi, repo: Repo, page: String, respons
                         style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(draft.orEmpty(), { draft = it }, Modifier.fillMaxWidth(),
                         label = { Text("Editable brief") }, minLines = 8)
+                    if (tracked) Text("Tracking in the Inbox under Delegated.", style = MaterialTheme.typography.bodySmall,
+                        color = VardeTheme.colors.success)
+                    trackError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
             }
         },
         confirmButton = {
             if (draft == null) TextButton(enabled = !loading, onClick = {
                 val note = if (warnings.isEmpty()) "" else warnings.joinToString("\n")
-                draft = buildHandover(repo.url, page, request, listOf(evidence, additionalEvidence, note).filter { it.isNotBlank() }.joinToString("\n\n"), instructions)
+                draft = buildHandover(repo.url, page, request, listOf(evidence, additionalEvidence, note).filter { it.isNotBlank() }.joinToString("\n\n"), instructions) +
+                    if (track && existingPull == null) trackingInstruction(trackingId) else ""
             }) { Text("Review brief") }
             else TextButton(onClick = {
+                record()
                 val intent = Intent(Intent.ACTION_SEND).setType("text/plain")
                     .putExtra(Intent.EXTRA_TEXT, draft.orEmpty())
                 context.startActivity(Intent.createChooser(intent, "Share handover"))
@@ -130,9 +158,23 @@ internal fun HandoverDialog(github: GitHubApi, repo: Repo, page: String, respons
         },
         dismissButton = {
             Row {
-                if (draft != null) TextButton(onClick = { clipboard.setText(AnnotatedString(draft.orEmpty())) }) { Text("Copy") }
+                if (draft != null) TextButton(onClick = { record(); clipboard.setText(AnnotatedString(draft.orEmpty())) }) { Text("Copy") }
                 TextButton(onClick = onClose) { Text("Close") }
             }
         }
     )
+}
+
+/** "Track in Inbox" switch shared by repository and product handovers. */
+@Composable
+internal fun TrackOption(checked: Boolean, enabled: Boolean, detail: String, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().toggleable(checked, enabled = enabled, role = androidx.compose.ui.semantics.Role.Checkbox, onValueChange = onChange),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = null, enabled = enabled)
+        Column(Modifier.padding(start = 12.dp)) {
+            Text("Track progress in Inbox", style = MaterialTheme.typography.bodyMedium)
+            Text(if (enabled) detail else "Saved delegations couldn't be read, so tracking is off.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
