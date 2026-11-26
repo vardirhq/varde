@@ -15,6 +15,8 @@ internal sealed interface WorkspacePage {
     data object Pulls : WorkspacePage { override val route = "pulls" }
     data object Runs : WorkspacePage { override val route = "runs" }
     data object Releases : WorkspacePage { override val route = "releases" }
+    /** Installable builds; with [sha], only builds of that commit (a pull request's head). */
+    data class Builds(val sha: String? = null) : WorkspacePage { override val route = "builds" + (sha?.let { ":$it" } ?: "") }
     data class Issue(val number: Int) : WorkspacePage { override val route = "issue:$number" }
     data class IssueComments(val number: Int) : WorkspacePage { override val route = "issuecomments:$number" }
     data class Pull(val number: Int) : WorkspacePage { override val route = "pull:$number" }
@@ -45,6 +47,7 @@ internal sealed interface WorkspacePage {
             return when (kind) {
                 "overview" -> Overview; "readme" -> Readme; "docs" -> Docs; "commits" -> Commits; "issues" -> Issues
                 "pulls" -> Pulls; "runs" -> Runs; "releases" -> Releases
+                "builds" -> if (arg.isEmpty()) Builds() else arg.takeIf { Sha.matches(it) }?.let { Builds(it) }
                 "issue" -> n()?.let(::Issue)
                 "issuecomments" -> n()?.let(::IssueComments)
                 "pull" -> n()?.let(::Pull)
@@ -77,6 +80,7 @@ internal fun WorkspacePage.source(repo: Repo): PageSource {
         WorkspacePage.Pulls -> PageSource("$base/pulls?state=open&per_page=100", all = true, maxItems = 300)
         WorkspacePage.Runs -> PageSource("$base/actions/runs?per_page=50")
         WorkspacePage.Releases -> PageSource("$base/releases?per_page=30")
+        is WorkspacePage.Builds -> PageSource("$base/actions/artifacts?per_page=100")
         is WorkspacePage.Issue -> PageSource("$base/issues/$number")
         is WorkspacePage.IssueComments -> PageSource("$base/issues/$number/comments?per_page=100", all = true)
         is WorkspacePage.Pull -> PageSource("$base/pulls/$number")
@@ -101,6 +105,7 @@ internal val WorkspacePage.title: String get() = when (this) {
     WorkspacePage.Pulls -> "Pull requests"
     WorkspacePage.Runs -> "Workflow runs"
     WorkspacePage.Releases -> "Releases"
+    is WorkspacePage.Builds -> if (sha == null) "Install a build" else "Builds of this pull request"
     is WorkspacePage.Issue -> "Issue #$number"
     is WorkspacePage.IssueComments -> "Issue conversation"
     is WorkspacePage.Pull -> "Pull request #$number"

@@ -21,6 +21,14 @@ Open a repository for its README and docs, recent commits, open issues and pull 
 
 **Storage and privacy.** Settings can exclude repositories. Pins, groups and the portfolio stay in app-private storage per account. GitHub responses are cached in a size-capped cache for offline use and when GitHub is rate limited or failing; cached screens show when they were saved, logs are never cached, and every cache is cleared on sign-out. Optional background checks (Settings → Notifications) poll GitHub about every 30 minutes over WorkManager, using conditional requests; the first check only records existing items, and nothing is sent anywhere except GitHub. Optional on-device assistance (Settings → On-device assistance, off by default) uses Gemini Nano through ML Kit on supported phones to draft handover tasks, rewrite review comments and suggest log lines; repository instructions and tracking IDs never pass through the model, and ML Kit is only started while the feature is on.
 
+## Installing builds
+
+A repository's **Install a build** page lists APKs attached to its latest release and app builds uploaded by its workflow runs, newest first, for the default branch and for other branches and pull requests (a pull request page links straight to its own builds). Varde downloads the artifact, unzips it, shows which app and version is inside, and hands it to Android's installer, which asks for confirmation. Android must first allow Varde to install apps. Artifacts that don't look like app builds are hidden until you choose **Show all artifacts**; one that turns out to hold an APK is remembered for that repository.
+
+## Releases
+
+See [Releasing Varde](docs/RELEASING.md): publishing a release builds a signed, shrunk APK and attaches it to the release.
+
 ## Debug APK updates
 
 CI numbers each build (`versionCode` is the workflow run number) and signs debug APKs with the public debug-only key in `app/debug-keystore.b64`. This allows subsequent APKs from this workflow to be installed as updates while retaining local data and the encrypted GitHub session. APKs signed with an older runner-generated key cannot be upgraded in place; uninstalling once removes local data and requires a fresh sign-in. The included key is public and is never appropriate for release signing.

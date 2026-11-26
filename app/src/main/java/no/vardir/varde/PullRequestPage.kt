@@ -89,6 +89,8 @@ internal fun PullRequestPage(
         // Actions
         SectionHeader("Act")
         OutlinedButton(onClick = onHandover, modifier = Modifier.fillMaxWidth()) { Text("Prepare agent handover") }
+        if (pr.open && pr.headSha.isNotBlank()) OutlinedButton(onClick = { onNavigate(WorkspacePage.Builds(pr.headSha).route) },
+            modifier = Modifier.fillMaxWidth()) { Text("Install a build of this PR") }
         when {
             cached -> Notice("Actions unavailable offline", "Reconnect and refresh before submitting GitHub actions.")
             !pr.open -> OutlinedButton(onClick = { onAction(WriteKind.COMMENT) }, modifier = Modifier.fillMaxWidth()) { Text("Add comment") }

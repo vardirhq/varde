@@ -227,6 +227,32 @@ class GitHub(private val clientId: String, private val apiBase: String = "https:
         } catch (e: java.io.IOException) { throw WriteOutcomeUnknown(e) }
     }
 
+    /**
+     * Streams a download to [dest], following GitHub's redirect to its storage host (which never receives the token).
+     * Fails if it exceeds [maxBytes]. [onProgress] gets bytes so far and the total when known (else -1).
+     */
+    internal suspend fun download(path: String, token: String, accept: String, dest: java.io.File, maxBytes: Long, onProgress: (Long, Long) -> Unit) =
+        call(api(path, token, accept).build(), redirecting, "Downloading") { response ->
+            val body = response.body ?: error("Empty download")
+            val total = body.contentLength()
+            check(total <= maxBytes) { "This download is ${total / 1_000_000} MB; Varde stops at ${maxBytes / 1_000_000} MB." }
+            dest.parentFile?.mkdirs()
+            var done = 0L
+            body.byteStream().use { input ->
+                dest.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        done += read
+                        check(done <= maxBytes) { "This download is over ${maxBytes / 1_000_000} MB, more than Varde downloads." }
+                        output.write(buffer, 0, read)
+                        onProgress(done, total)
+                    }
+                }
+            }
+        }
+
     /** Raw file bytes from the contents API (works for private repositories and files over 1 MB), capped at [maxBytes]. */
     internal suspend fun rawFile(path: String, token: String, maxBytes: Long): ByteArray =
         call(api(path, token, accept = "application/vnd.github.raw").build(), redirecting) { response ->
