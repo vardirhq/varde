@@ -17,12 +17,30 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import org.commonmark.node.*
 
+/** Base URL that relative links resolve against, e.g. a README's GitHub page. */
+private val LocalLinkBase = staticCompositionLocalOf<String?> { null }
+
+/** Opens a resolved link inside Varde when it can (returns true), e.g. another doc in the same repository. */
+internal val LocalInAppLink = staticCompositionLocalOf<(String) -> Boolean> { { false } }
+
+/** Renders markdown. With [linkBase], relative links like `docs/GUIDE.md` open that file on GitHub. */
 @Composable
-internal fun WorkspaceMarkdown(markdown: String) {
+internal fun WorkspaceMarkdown(markdown: String, linkBase: String? = null) {
     val document = remember(markdown) { WorkspaceMarkdownParser.parse(markdown) }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        MarkdownChildren(document)
+    CompositionLocalProvider(LocalLinkBase provides linkBase) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            MarkdownChildren(document)
+        }
     }
+}
+
+/** An absolute http(s) URL for [destination], resolving relative links against [base]; null when it can't be opened. */
+internal fun resolveLink(destination: String, base: String?): String? {
+    val target = destination.trim()
+    if (target.startsWith("https://") || target.startsWith("http://")) return target
+    if (base == null || target.isEmpty() || target.contains(':') && !target.startsWith("#")) return null
+    return runCatching { java.net.URI(base).resolve(target.replace(" ", "%20")).toString() }.getOrNull()
+        ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
 }
 
 @Composable
@@ -103,13 +121,12 @@ private fun MarkdownInline(node: Node, style: TextStyle, bold: Boolean = false) 
             visit(node)
         }
     }
+    val linkBase = LocalLinkBase.current
+    val inApp = LocalInAppLink.current
     ClickableText(text = annotated, style = style.copy(color = contentColor,
         fontWeight = if (bold) FontWeight.Bold else style.fontWeight), onClick = { offset ->
-        annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { url ->
-            if (url.startsWith("https://") || url.startsWith("http://")) {
-                runCatching { uri.openUri(url) }
-            }
-        }
+        annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item
+            ?.let { resolveLink(it, linkBase) }?.let { url -> if (!inApp(url)) runCatching { uri.openUri(url) } }
     })
 }
 

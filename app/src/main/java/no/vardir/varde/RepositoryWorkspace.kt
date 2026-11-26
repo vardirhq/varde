@@ -37,6 +37,12 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
     var writeMessage by remember { mutableStateOf<String?>(null) }
     var rerunning by remember { mutableStateOf(false) }
     var rerunResult by remember { mutableStateOf<Pair<NoticeKind, String>?>(null) }
+    // The overview also shows a README preview; a missing README just means no card.
+    var readme by remember(repo.id) { mutableStateOf<Readme?>(null) }
+    LaunchedEffect(repo.id, page, generation) {
+        if (page != "overview") return@LaunchedEffect
+        readme = try { parseReadme(github.load(repoApi(repo) + "/readme").body) } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+    }
     var diffComments by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var diffCommentWarning by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -45,6 +51,8 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
     val base = repoApi(repo)
     val endpoint = when {
         page == "overview" -> base
+        page == "readme" -> "$base/readme"
+        page == "docs" -> "$base/git/trees/HEAD?recursive=1"
         page == "commits" -> "$base/commits?per_page=30"
         page == "issues" -> "$base/issues?state=open&per_page=100"
         page.startsWith("issue:") -> "$base/issues/" + page.removePrefix("issue:")
@@ -125,6 +133,10 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
         color = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
+      // Links to other docs in this repository open here instead of in the browser.
+      CompositionLocalProvider(LocalInAppLink provides { url ->
+          repoBlobPath(url.substringBefore('#'), repo.owner, repo.name)?.takeIf { isDocPath(it) }?.let { navigate("files:$it"); true } ?: false
+      }) {
       Column(Modifier.fillMaxSize()) {
         DetailTopBar(if (page == "overview") repo.name else workspacePageTitle(page), onBack,
             eyebrow = if (page == "overview") repo.owner else "${repo.owner} / ${repo.name}", actions = {
@@ -143,7 +155,8 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
             }
             writeMessage?.let { message -> item { Notice("GitHub action", message, NoticeKind.Success) } }
             error?.let { message -> item {
-                Notice("Couldn't load this view", message, NoticeKind.Error)
+                if (page == "readme" && message.contains("404")) Notice("No README", "This repository has no README on its default branch.")
+                else Notice("Couldn't load this view", message, NoticeKind.Error)
             } }
             payload?.let { response ->
                 if (response.cached) item {
@@ -151,6 +164,21 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                 }
                 if (page.startsWith("log:")) {
                     item { JobLogPanel(response.body, assistant) }
+                } else if (page == "docs") {
+                    item {
+                        val index = runCatching { parseDocIndex(response.body) }.getOrNull()
+                        if (index == null) Notice("Couldn't list docs", "Use Files to browse the repository.", NoticeKind.Warning)
+                        else DocsList(index) { doc -> navigate("files:${doc.path}") }
+                    }
+                } else if (page == "readme") {
+                    val parsed = parseReadme(response.body)
+                    item {
+                        if (parsed == null) Notice("Couldn't show this README", "It may be binary or too unusual to display. Open it on GitHub.", NoticeKind.Warning)
+                        else VardeCard {
+                            ReadmeContent(parsed)
+                            if (parsed.htmlUrl.startsWith("https://github.com/")) TextButton(onClick = { runCatching { uri.openUri(parsed.htmlUrl) } }) { Text("Open on GitHub") }
+                        }
+                    }
                 } else if (page.startsWith("pull:")) {
                     val pr = runCatching { parsePullRequest(response.body) }.getOrNull()
                     if (pr == null) item { Notice("Couldn't read this pull request", "The GitHub response could not be displayed.", NoticeKind.Error) }
@@ -200,8 +228,9 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                                 monospace = page.startsWith("changes:") || page.startsWith("files:"),
                                 markdown = page.startsWith("pull:") || page.startsWith("issue:") || page.startsWith("issuecomments:") || page.startsWith("comments:") ||
                                     page.startsWith("reviewcomments:") ||
-                                    (page.startsWith("files:") && link.title.endsWith(".md", ignoreCase = true)),
+                                    (page.startsWith("files:") && link.title.substringAfterLast('.', "").lowercase() in setOf("md", "markdown", "mdx")),
                                 languageHint = if (page.startsWith("files:")) link.title else "",
+                                linkBase = if (page.startsWith("files:") && link.route.startsWith("https://github.com/")) link.route else null,
                                 onOpen = if (link.route.startsWith("https://github.com/")) ({ uri.openUri(link.route) }) else null)
                         } else {
                             NavRow(link.title, link.subtitle, link.status, onClick = if (!canOpen) null else {
@@ -212,6 +241,7 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                             })
                         }
                     }
+                    if (page == "overview") readme?.let { r -> item(key = "readme") { ReadmePreviewCard(r) { navigate("readme") } } }
                     // Run page: jobs first, then what you can do about them, with the result next to the button.
                     if (page.startsWith("run:")) {
                         item { SectionHeader("Act") }
@@ -232,11 +262,14 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
             }
         }
       }
+      }
     }
 }
 
 internal fun workspacePageTitle(page: String): String = when {
     page == "overview" -> "Repository overview"
+    page == "readme" -> "README"
+    page == "docs" -> "Docs"
     page == "commits" -> "Recent commits"
     page == "issues" -> "Open issues"
     page.startsWith("issue:") -> "Issue #" + page.substringAfter(':')
@@ -258,14 +291,14 @@ internal fun workspacePageTitle(page: String): String = when {
 @Composable
 private fun WorkspaceTextBlock(
     title: String, text: String, monospace: Boolean = false, markdown: Boolean = false,
-    languageHint: String = "", onOpen: (() -> Unit)? = null
+    languageHint: String = "", linkBase: String? = null, onOpen: (() -> Unit)? = null
 ) {
     VardeCard {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary)
             when {
-                markdown -> WorkspaceMarkdown(text)
+                markdown -> WorkspaceMarkdown(text, linkBase)
                 monospace && languageHint.isNotBlank() -> WorkspaceCode(text, languageHint)
                 else -> Text(text, style = MaterialTheme.typography.bodySmall,
                     fontFamily = if (monospace) FontFamily.Monospace else FontFamily.Default,
@@ -280,10 +313,11 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
     if (page == "overview") {
         val details = JSONObject(body)
         return listOf(
-        WorkspaceLink("Repository details", "Default branch: ${jsonText(details, "default_branch", "unknown")} · ${details.optInt("open_issues_count")} open issues and PRs", ""),
+        WorkspaceLink("Repository details", "README · default branch ${jsonText(details, "default_branch", "unknown")} · ${details.optInt("open_issues_count")} open issues and PRs", "readme"),
 
         WorkspaceLink("Commits", "Recent changes", "commits"), WorkspaceLink("Issues", "Open issues", "issues"),
         WorkspaceLink("Pull requests", "Review changes and checks", "pulls"), WorkspaceLink("Workflows", "Runs, jobs and logs", "runs"),
+        WorkspaceLink("Docs", "README, guides and other markdown documents", "docs"),
         WorkspaceLink("Files", "Browse repository files", "files:")
         )
     }
@@ -342,6 +376,8 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
 
 private fun loadingLabel(page: String): String = when {
     page == "overview" -> "Loading repository…"
+    page == "readme" -> "Loading README…"
+    page == "docs" -> "Finding docs…"
     page.startsWith("pull:") -> "Loading pull request #${page.substringAfter(':')}…"
     page.startsWith("issue:") -> "Loading issue #${page.substringAfter(':')}…"
     page.startsWith("log:") -> "Loading job log…"
