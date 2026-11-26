@@ -38,6 +38,8 @@ Draft a release with a tag like `v0.2.0` (Varde suggests the next version), then
 
 ## Debug and release builds
 
+Debug builds are named after the latest release tag and their CI run, like `0.2.0-dev.57`, or `0.1.57` before the first release. Android only shows the name; the version code decides what counts as an update.
+
 CI also builds a debug APK on every push and pull request, signed with a public debug key (`app/debug-keystore.b64`). Debug and release builds use the same app ID but different keys, so Android can't update one with the other: switching from a debug build to a release build means uninstalling the debug build first, which removes its local data and requires signing in again.
 
 R8 mapping files for each release are kept as a workflow artifact, for reading crash stack traces.
