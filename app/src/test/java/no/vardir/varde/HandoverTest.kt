@@ -28,4 +28,16 @@ class HandoverTest {
         assertFalse(hasFailedJobs("""{"jobs":[{"conclusion":null}]}"""))
         assertFalse(hasFailedJobs("invalid"))
     }
+
+    @Test fun repositoryAndIssueEvidence() {
+        val repo = repositoryEvidence("""{"full_name":"o/r","html_url":"https://github.com/o/r","default_branch":"main","language":"Kotlin","open_issues_count":4,"description":null}""")
+        org.junit.Assert.assertTrue(repo.contains("Default branch: main") && repo.contains("Main language: Kotlin") && !repo.contains("Description"))
+        val commits = recentCommits("""[{"sha":"abcdef1234","commit":{"message":"Fix login\n\nDetails"}}]""")
+        org.junit.Assert.assertEquals("- abcdef1 Fix login", commits)
+        val issue = issueEvidence("""{"number":12,"html_url":"https://github.com/o/r/issues/12","title":"Crash","state":"open","labels":[{"name":"bug"}],"body":"Steps"}""")
+        org.junit.Assert.assertTrue(issue.contains("Labels: bug") && issue.contains("Fixes #12") && issue.contains("Steps"))
+        val many = "[" + (1..20).joinToString(",") { """{"user":{"login":"u$it"},"body":"${"x".repeat(1000)}"}""" } + "]"
+        val comments = issueComments(many)
+        org.junit.Assert.assertTrue(comments.length < 9500 && comments.endsWith("[More comments on GitHub.]"))
+    }
 }

@@ -172,6 +172,13 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                     if (links.isEmpty() && result.isSuccess) item {
                         Notice("Nothing here yet", "There is nothing to show in this view.")
                     }
+                    // Overview: the starting point for handing a new task about this repository to an agent.
+                    if (page == "overview") item {
+                        OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Hand a task to an agent") }
+                    }
+                    if (page.startsWith("issue:")) item {
+                        OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Hand this issue to an agent") }
+                    }
                     if (page.startsWith("issue:") && !response.cached) item {
                         OutlinedButton(onClick = { writeKind = WriteKind.COMMENT }, modifier = Modifier.fillMaxWidth()) { Text("Add comment") }
                     }
@@ -228,7 +235,7 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
     }
 }
 
-private fun workspacePageTitle(page: String): String = when {
+internal fun workspacePageTitle(page: String): String = when {
     page == "overview" -> "Repository overview"
     page == "commits" -> "Recent commits"
     page == "issues" -> "Open issues"
