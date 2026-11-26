@@ -6,6 +6,8 @@ internal interface GitHubApi {
     suspend fun load(path: String): CachedResponse
     suspend fun submitWrite(repo: Repo, action: WriteAction)
     suspend fun rerunFailedJobs(repo: Repo, runId: Long)
+    /** Raw bytes of a repository file, never cached on disk. Used for images in READMEs and docs. */
+    suspend fun rawFile(repo: Repo, path: String, maxBytes: Long): ByteArray
     suspend fun deleteRun(repo: Repo, runId: Long)
     suspend fun disableWorkflow(repo: Repo, workflowId: Long)
     /** Returns the new issue's URL. */
@@ -27,6 +29,8 @@ internal class SessionGitHub(
     override suspend fun submitWrite(repo: Repo, action: WriteAction) =
         client.submitWrite(repo, action, credentials()?.second ?: throw IllegalStateException("Sign in before submitting an action."))
     override suspend fun rerunFailedJobs(repo: Repo, runId: Long) = client.rerunFailedJobs(repo, runId, token("rerun jobs"))
+    override suspend fun rawFile(repo: Repo, path: String, maxBytes: Long): ByteArray =
+        client.rawFile(repoApi(repo) + "/contents/" + path.split('/').joinToString("/") { pathPart(it) }, token("load files"), maxBytes)
     override suspend fun deleteRun(repo: Repo, runId: Long) = client.deleteRun(repo, runId, token("delete runs"))
     override suspend fun disableWorkflow(repo: Repo, workflowId: Long) = client.disableWorkflow(repo, workflowId, token("disable workflows"))
     override suspend fun createIssue(repo: Repo, title: String, body: String): String =

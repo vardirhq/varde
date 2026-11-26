@@ -4,7 +4,11 @@ import org.commonmark.node.*
 import org.commonmark.parser.Parser
 
 internal object WorkspaceMarkdownParser {
-    private val parser = Parser.builder().build()
+    // GitHub-flavored tables and ~~strikethrough~~, as used in most READMEs.
+    private val parser = Parser.builder()
+        .extensions(listOf(org.commonmark.ext.gfm.tables.TablesExtension.create(),
+            org.commonmark.ext.gfm.strikethrough.StrikethroughExtension.create()))
+        .build()
     fun parse(text: String): Node = parser.parse(text)
 }
 
