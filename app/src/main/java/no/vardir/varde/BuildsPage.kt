@@ -88,6 +88,39 @@ internal fun BuildsPage(github: GitHubApi, repo: Repo, artifactsBody: String, ca
     }
 }
 
+/**
+ * App builds uploaded by one workflow run, with an Install button each. Shows nothing when the run uploaded none,
+ * so it costs no space on runs that don't build apps.
+ */
+@Composable
+internal fun RunBuilds(github: GitHubApi, repo: Repo, runId: Long) {
+    val context = LocalContext.current
+    val known = remember(repo.id) { KnownBuilds(context) }
+    var artifacts by remember(runId) { mutableStateOf<List<BuildArtifact>>(emptyList()) }
+    var installing by remember { mutableStateOf<BuildArtifact?>(null) }
+    LaunchedEffect(repo.id, runId) {
+        artifacts = try { parseArtifacts(github.load(repoApi(repo) + "/actions/runs/$runId/artifacts?per_page=100").body).filter { !it.expired && it.sizeBytes > 0 } }
+        catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
+    }
+    if (artifacts.isEmpty()) return
+    installing?.let { a ->
+        InstallBuildDialog(github, BuildSource.Artifact(repo, a), onDismiss = { installing = null }, onFoundApk = { known.remember(repo, a.name) })
+    }
+    // A run's own list is short, so everything is shown; likely app builds first.
+    val sorted = artifacts.sortedBy { !looksLikeBuild(it, known.names(repo)) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionHeader("Builds from this run")
+        if (!ApkInstaller.allowed(context)) TextButton(onClick = { runCatching { context.startActivity(ApkInstaller.permissionIntent(context)) } }) {
+            Text("Allow Varde to install apps first")
+        }
+        sorted.forEach { a ->
+            val likely = looksLikeBuild(a, known.names(repo))
+            if (likely) Button(onClick = { installing = a }, modifier = Modifier.fillMaxWidth()) { Text("Install ${a.name} · ${megabytes(a.sizeBytes)}") }
+            else OutlinedButton(onClick = { installing = a }, modifier = Modifier.fillMaxWidth()) { Text("Try ${a.name} · ${megabytes(a.sizeBytes)}") }
+        }
+    }
+}
+
 /** Runs [block] whenever the screen comes back to the foreground. */
 @Composable
 private fun LifecycleResumed(block: () -> Unit) {
@@ -111,7 +144,7 @@ private sealed interface InstallStep {
 
 /** Download → unzip → identify → confirm → Android's installer. Files are deleted when the dialog closes. */
 @Composable
-private fun InstallBuildDialog(github: GitHubApi, source: BuildSource, onDismiss: () -> Unit, onFoundApk: () -> Unit) {
+internal fun InstallBuildDialog(github: GitHubApi, source: BuildSource, onDismiss: () -> Unit, onFoundApk: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var step by remember { mutableStateOf<InstallStep>(InstallStep.Confirm) }

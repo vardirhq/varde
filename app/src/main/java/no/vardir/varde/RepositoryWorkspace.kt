@@ -199,6 +199,7 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                         onNavigate = { navigate(it) }, onOpenUrl = { runCatching { uri.openUri(it) } },
                         onHandover = { showHandover = true }, onComment = { writeKind = WriteKind.COMMENT }, onRerun = { confirmRerun = true },
                         onRunWorkflow = { runWorkflow = true }, onCommentLine = if (response.cached) null else { path, line -> lineComment = LineComment(path, line) },
+                        runBuilds = { runId -> item(key = "run-builds") { RunBuilds(github, repo, runId) } },
                         runExtras = { runId ->
                             item { CancelRun(github, repo, runId, onDone = ::done) }
                             item { SectionHeader("Not going to fix it?") }
@@ -285,7 +286,7 @@ private fun LazyListScope.linkItems(
     page: WorkspacePage, response: CachedResponse, repo: Repo, readme: Readme?, diffComments: Map<String, List<String>>,
     diffCommentWarning: String?, rerunning: Boolean, onNavigate: (String) -> Unit, onOpenUrl: (String) -> Unit,
     onHandover: () -> Unit, onComment: () -> Unit, onRerun: () -> Unit, onRunWorkflow: () -> Unit,
-    onCommentLine: ((String, DiffLine) -> Unit)?, runExtras: LazyListScope.(Long) -> Unit,
+    onCommentLine: ((String, DiffLine) -> Unit)?, runBuilds: LazyListScope.(Long) -> Unit, runExtras: LazyListScope.(Long) -> Unit,
 ) {
     val result = runCatching { workspaceLinks(page, response.body) }
     val links = result.getOrDefault(emptyList())
@@ -325,6 +326,8 @@ private fun LazyListScope.linkItems(
     if (page == WorkspacePage.Overview) readme?.let { r -> item(key = "readme") { ReadmePreviewCard(r) { onNavigate(WorkspacePage.Readme.route) } } }
     // Run page: jobs first, then what you can do about them.
     if (page is WorkspacePage.Run) {
+        // Builds first: for a green run, installing what it built is usually why you're here.
+        if (!response.cached) runBuilds(page.id)
         item { SectionHeader("Act") }
         if (hasFailedJobs(response.body)) item {
             Button(onClick = onRerun, enabled = !rerunning && !response.cached, modifier = Modifier.fillMaxWidth()) {
