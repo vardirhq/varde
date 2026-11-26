@@ -4,6 +4,14 @@ Publishing a GitHub release (on GitHub, or from Varde's own **Releases** page) r
 
 ## One-time setup: the release key
 
+The quick way, on your own computer with a JDK, `openssl` and the GitHub CLI (`gh auth login`):
+
+```sh
+scripts/create-release-key.sh            # creates ~/varde-release-key and sets the four secrets
+```
+
+It refuses to replace an existing key. Back up the folder it creates. The manual steps below do the same thing.
+
 The release key signs every release. Android only installs an update when it is signed with the same key as the installed app, so **keep the key and its passwords safe and backed up**. If the key is lost, no future release can update an installed copy.
 
 1. Create the key on your computer (needs a JDK):
