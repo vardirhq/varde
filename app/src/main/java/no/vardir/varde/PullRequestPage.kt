@@ -20,7 +20,7 @@ private const val DescriptionPreview = 600
  */
 @Composable
 internal fun PullRequestPage(
-    vm: Workspace, repo: Repo, pr: PullRequest, cached: Boolean,
+    github: GitHubApi, repo: Repo, pr: PullRequest, cached: Boolean,
     onNavigate: (String) -> Unit, onAction: (WriteKind) -> Unit, onHandover: () -> Unit, onOpenUrl: (String) -> Unit,
 ) {
     var checks by remember(pr.headSha) { mutableStateOf<CheckSummary?>(null) }
@@ -29,7 +29,7 @@ internal fun PullRequestPage(
         checksLoading = true
         checks = try {
             if (pr.headSha.isBlank()) null else {
-                val result = vm.workspaceLoad(repoApi(repo) + "/commits/" + pathPart(pr.headSha) + "/check-runs?per_page=100")
+                val result = github.load(repoApi(repo) + "/commits/" + pathPart(pr.headSha) + "/check-runs?per_page=100")
                 parseCheckRuns(result.body, result.cached)
             }
         } catch (e: CancellationException) { throw e } catch (_: Exception) { null }

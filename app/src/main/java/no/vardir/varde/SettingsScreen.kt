@@ -16,36 +16,38 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun SettingsScreen(vm: Workspace, onManageRepos: () -> Unit) {
-    val visible = includedRepositories(vm.repos, vm.excludedRepos).size
+internal fun SettingsScreen(
+    sync: SyncInfo, user: String, onSignOut: () -> Unit, repositories: RepositoryState, portfolio: PortfolioStore, onManageRepos: () -> Unit,
+) {
+    val visible = repositories.included.size
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { ScreenTitle("Settings") }
-        item { SyncStatus(vm) }
+        item { SyncStatus(sync) }
         item { SectionHeader("GitHub account") }
         item {
             VardeCard {
-                Text(vm.user.ifBlank { "GitHub user" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(user.ifBlank { "GitHub user" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text("Signed in with GitHub", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = vm::refresh, enabled = !vm.busy) { Text("Refresh data") }
-                    OutlinedButton(onClick = vm::logout) { Text("Sign out") }
+                    Button(onClick = sync::refresh, enabled = !sync.busy) { Text("Refresh data") }
+                    OutlinedButton(onClick = onSignOut) { Text("Sign out") }
                 }
             }
         }
         item { SectionHeader("Repositories") }
         item {
-            NavRow("Visible repositories", "$visible shown · ${vm.excludedRepos.size} hidden", onClick = onManageRepos)
+            NavRow("Visible repositories", "$visible shown · ${repositories.excluded.size} hidden", onClick = onManageRepos)
         }
         item { SectionHeader("Portfolio") }
-        item { VardeCard { PortfolioBackupControls(vm) } }
+        item { VardeCard { PortfolioBackupControls(portfolio) } }
     }
 }
 
 @Composable
-internal fun RepoVisibilityScreen(vm: Workspace, onBack: () -> Unit) {
+internal fun RepoVisibilityScreen(repositories: RepositoryState, onBack: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    val matches = vm.repos.filter { it.name.contains(query, true) || it.owner.contains(query, true) }
+    val matches = repositories.repos.filter { it.name.contains(query, true) || it.owner.contains(query, true) }
     LazyColumn(Modifier.fillMaxSize().safeDrawingPadding(), contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -61,9 +63,9 @@ internal fun RepoVisibilityScreen(vm: Workspace, onBack: () -> Unit) {
             Notice("No matching repositories", "Try another search or refresh GitHub.", modifier = Modifier.padding(horizontal = ScreenGutter))
         }
         items(matches, key = { it.id }) { repo ->
-            val included = repo.id !in vm.excludedRepos
+            val included = repo.id !in repositories.excluded
             Row(Modifier.fillMaxWidth()
-                .toggleable(included, role = Role.Switch) { vm.setExcluded(repo.id, !it) }
+                .toggleable(included, role = Role.Switch) { repositories.setExcluded(repo.id, !it) }
                 .padding(horizontal = ScreenGutter, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(repo.name, style = MaterialTheme.typography.bodyLarge)

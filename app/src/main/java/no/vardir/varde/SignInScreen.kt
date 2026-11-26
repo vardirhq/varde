@@ -19,7 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun SignInScreen(vm: Workspace) {
+internal fun SignInScreen(vm: AppViewModel) {
     val uri = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
     var privateAccess by rememberSaveable { mutableStateOf(false) }
@@ -60,7 +60,7 @@ internal fun SignInScreen(vm: Workspace) {
             }
             if (vm.busy) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                TextButton(onClick = vm::cancel) { Text("Cancel") }
+                TextButton(onClick = { vm.cancel() }) { Text("Cancel") }
             }
             vm.error?.let { Notice("Sign-in problem", it, NoticeKind.Error) }
         }

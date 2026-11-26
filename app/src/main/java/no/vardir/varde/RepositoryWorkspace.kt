@@ -26,7 +26,7 @@ import java.util.Date
 private data class WorkspaceLink(val title: String, val subtitle: String, val route: String, val status: StatusLabel? = null)
 
 @Composable
-internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
+internal fun RepositoryWorkspace(github: GitHubApi, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
     var payload by remember { mutableStateOf<CachedResponse?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
@@ -64,7 +64,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
     }
     LaunchedEffect(repo.id, page, generation) {
         loading = true; error = null; payload = null
-        try { payload = vm.workspaceLoad(endpoint) }
+        try { payload = github.load(endpoint) }
         catch (e: CancellationException) { throw e }
         catch (e: Exception) { error = e.message ?: "Unable to load this view." }
         finally { loading = false }
@@ -74,7 +74,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
         diffCommentWarning = null
         if (page.startsWith("changes:")) {
             try {
-                val response = vm.workspaceLoad(base + "/pulls/" + page.substringAfter(':') + "/comments?per_page=100")
+                val response = github.load(base + "/pulls/" + page.substringAfter(':') + "/comments?per_page=100")
                 val comments = JSONArray(response.body)
                 diffComments = (0 until comments.length()).mapNotNull { comments.optJSONObject(it) }
                     .groupBy { jsonText(it, "path") }
@@ -94,13 +94,13 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
         val data = payload
         if (number != null && data != null) {
             val sha = runCatching { JSONObject(data.body).optJSONObject("head")?.optString("sha").orEmpty() }.getOrDefault("")
-            GitHubActionDialog(vm, repo, number, kind, sha, page.startsWith("pull:"),
+            GitHubActionDialog(github, repo, number, kind, sha, page.startsWith("pull:"),
                 onDismiss = { writeKind = null; generation++ }, onSuccess = {
                     writeKind = null; writeMessage = "GitHub accepted the action."; generation++
                 })
         }
     }
-    if (showHandover) HandoverDialog(vm, repo, page, payload) { showHandover = false }
+    if (showHandover) HandoverDialog(github, repo, page, payload) { showHandover = false }
     if (confirmRerun) AlertDialog(
         onDismissRequest = { confirmRerun = false },
         title = { Text("Rerun failed jobs?") },
@@ -111,7 +111,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
             if (runId != null) scope.launch {
                 rerunning = true
                 try {
-                    vm.rerunFailedJobs(repo, runId)
+                    github.rerunFailedJobs(repo, runId)
                     rerunResult = NoticeKind.Success to "GitHub accepted the rerun. Refresh to see the new attempt."
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) { rerunResult = NoticeKind.Error to (e.message ?: "Rerun failed.") }
@@ -155,7 +155,7 @@ internal fun RepositoryWorkspace(vm: Workspace, repo: Repo, page: String, onNavi
                     val pr = runCatching { parsePullRequest(response.body) }.getOrNull()
                     if (pr == null) item { Notice("Couldn't read this pull request", "The GitHub response could not be displayed.", NoticeKind.Error) }
                     else item(key = "pull:${pr.number}") {
-                        PullRequestPage(vm, repo, pr, response.cached, onNavigate = { navigate(it) },
+                        PullRequestPage(github, repo, pr, response.cached, onNavigate = { navigate(it) },
                             onAction = { writeKind = it }, onHandover = { showHandover = true },
                             onOpenUrl = { runCatching { uri.openUri(it) } })
                     }

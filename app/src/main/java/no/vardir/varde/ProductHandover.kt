@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 @Composable
-internal fun ProductHandover(vm: Workspace, product: Product, repos: List<Repo>, onClose: () -> Unit) {
+internal fun ProductHandover(
+    github: GitHubApi, inbox: AttentionInbox, repositories: RepositoryState, product: Product, repos: List<Repo>, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -57,7 +58,7 @@ internal fun ProductHandover(vm: Workspace, product: Product, repos: List<Repo>,
                         for (repo in chosen) {
                             for (name in listOf("AGENTS.md", "CLAUDE.md")) {
                                 try {
-                                    val result = vm.workspaceLoad(repoApi(repo) + "/contents/" + name)
+                                    val result = github.load(repoApi(repo) + "/contents/" + name)
                                     val value = JSONObject(result.body).optString("content", "")
                                     require(value.isNotBlank())
                                     val decoded = String(Base64.decode(value, Base64.DEFAULT), Charsets.UTF_8)
@@ -86,9 +87,9 @@ internal fun ProductHandover(vm: Workspace, product: Product, repos: List<Repo>,
                                     (if (it.url.isBlank()) "" else " — ${it.url}") +
                                     (if (it.details.isBlank()) "" else "\n  ${it.details}")) }
                             }
-                            val selectedAttention = (vm.feedItems + vm.attention).filter { it.repositoryId in selected && it.repositoryId !in vm.excludedRepos }
+                            val selectedAttention = inbox.items(repositories.excluded).filter { it.repositoryId in selected }
                             appendLine("\n## Available attention")
-                            if (vm.feedLoading || vm.feedIncomplete || !vm.attentionLoaded || vm.snapshotTime != null)
+                            if (inbox.mayBeIncomplete(offline = repositories.snapshotTime != null))
                                 appendLine("Attention data may be incomplete or stale; verify on GitHub.")
                             if (selectedAttention.isEmpty()) appendLine("No items in the available attention feed.")
                             selectedAttention.forEach { appendLine("- ${it.repository} · ${it.kind.label}: ${it.title} — ${it.url}") }

@@ -18,27 +18,27 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun ReposScreen(vm: Workspace, onOpen: (Repo) -> Unit) {
+internal fun ReposScreen(sync: SyncInfo, repositories: RepositoryState, onOpen: (Repo) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var owner by rememberSaveable { mutableStateOf<String?>(null) }
     var showArchived by rememberSaveable { mutableStateOf(false) }
     var ownersOpen by remember { mutableStateOf(false) }
     var groupingRepo by remember { mutableStateOf<Repo?>(null) }
     var groupInput by remember { mutableStateOf("") }
-    val included = includedRepositories(vm.repos, vm.excludedRepos)
-    val sorted = included.sortedWith(compareBy<Repo> { it.id !in vm.pinnedRepos }.thenBy { vm.repoGroups[it.id] ?: "￿" })
+    val included = repositories.included
+    val sorted = included.sortedWith(compareBy<Repo> { it.id !in repositories.pinned }.thenBy { repositories.groups[it.id] ?: "￿" })
     val visible = filterRepositories(sorted, query, owner, showArchived)
     groupingRepo?.let { repo ->
         AlertDialog(onDismissRequest = { groupingRepo = null }, title = { Text("Group ${repo.name}") },
             text = { OutlinedTextField(groupInput, { groupInput = it }, label = { Text("Group name") }, singleLine = true,
                 supportingText = { Text("Leave empty to remove the group.") }) },
-            confirmButton = { TextButton(onClick = { vm.setGroup(repo.id, groupInput); groupingRepo = null }) { Text("Save") } },
+            confirmButton = { TextButton(onClick = { repositories.setGroup(repo.id, groupInput); groupingRepo = null }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { groupingRepo = null }) { Text("Cancel") } })
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { ScreenTitle("Repositories", "${included.size} visible on GitHub") }
-        item { SyncStatus(vm) }
+        item { SyncStatus(sync) }
         item {
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search repositories") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }, singleLine = true)
@@ -57,14 +57,14 @@ internal fun ReposScreen(vm: Workspace, onOpen: (Repo) -> Unit) {
                 FilterChip(selected = showArchived, onClick = { showArchived = !showArchived }, label = { Text("Show archived") })
             }
         }
-        if (visible.isEmpty() && !vm.busy) item {
+        if (visible.isEmpty() && !sync.busy) item {
             if (included.isEmpty()) Notice("No visible repositories", "Choose repositories in Settings or refresh GitHub.")
             else Notice("No matching repositories", "Try another search or filter.")
         }
         items(visible, key = { it.id }) { repo ->
-            RepoCard(repo, pinned = repo.id in vm.pinnedRepos, group = vm.repoGroups[repo.id], onClick = { onOpen(repo) },
-                onTogglePin = { vm.togglePin(repo.id) },
-                onSetGroup = { groupInput = vm.repoGroups[repo.id].orEmpty(); groupingRepo = repo })
+            RepoCard(repo, pinned = repo.id in repositories.pinned, group = repositories.groups[repo.id], onClick = { onOpen(repo) },
+                onTogglePin = { repositories.togglePin(repo.id) },
+                onSetGroup = { groupInput = repositories.groups[repo.id].orEmpty(); groupingRepo = repo })
         }
     }
 }

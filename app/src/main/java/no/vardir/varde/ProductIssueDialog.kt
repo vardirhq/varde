@@ -12,7 +12,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun ProductIssueDialog(vm: Workspace, item: WorkItem, repos: List<Repo>, onClose: () -> Unit, onUncertain: () -> Unit, onCreated: (String) -> Boolean) {
+internal fun ProductIssueDialog(github: GitHubApi, item: WorkItem, repos: List<Repo>, onClose: () -> Unit, onUncertain: () -> Unit, onCreated: (String) -> Boolean) {
     val scope = rememberCoroutineScope()
     val uri = LocalUriHandler.current
     var repoId by remember { mutableStateOf(repos.firstOrNull()?.id) }
@@ -58,7 +58,7 @@ internal fun ProductIssueDialog(vm: Workspace, item: WorkItem, repos: List<Repo>
                 busy = true; error = null
                 scope.launch {
                     try {
-                        val url = vm.createProductIssue(target, title.trim(), body)
+                        val url = github.createIssue(target, title.trim(), body)
                         created = url
                         if (onCreated(url)) onClose()
                     } catch (e: CancellationException) { throw e }

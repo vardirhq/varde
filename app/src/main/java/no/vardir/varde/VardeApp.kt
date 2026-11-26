@@ -31,7 +31,7 @@ private enum class Tab(val label: String, val icon: ImageVector, val route: Any)
 }
 
 @Composable
-fun Varde(vm: Workspace = viewModel()) {
+fun Varde(vm: AppViewModel = viewModel()) {
     if (!vm.signedIn) { SignInScreen(vm); return }
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
@@ -59,41 +59,45 @@ private fun NavHostController.switchTab(route: Any) = navigate(route) {
 }
 
 @Composable
-private fun VardeNavHost(vm: Workspace, nav: NavHostController, modifier: Modifier) {
+private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Modifier) {
+    val repositories = vm.repositories
+    val portfolio = vm.portfolio
     val uri = LocalUriHandler.current
     val openRepo: (Repo, String) -> Unit = { repo, page -> nav.navigate(RepositoryRoute(repo.id, page)) }
     val openAttention: (AttentionItem) -> Unit = { item ->
         val route = attentionRoute(item)
-        val known = vm.repos.any { it.id == item.repositoryId && it.id !in vm.excludedRepos }
+        val known = repositories.included.any { it.id == item.repositoryId }
         if (route != null && known) nav.navigate(RepositoryRoute(item.repositoryId, route))
         else runCatching { uri.openUri(item.url) }
     }
     NavHost(nav, startDestination = InboxRoute, modifier = modifier) {
         composable<InboxRoute> {
-            InboxScreen(vm, onOpenItem = openAttention, onOpenProduct = { nav.navigate(ProductRoute(it.id)) },
+            InboxScreen(vm, vm.user, vm.inbox, repositories, portfolio, onOpenItem = openAttention, onOpenProduct = { nav.navigate(ProductRoute(it.id)) },
                 onShowProducts = { nav.switchTab(ProductsRoute) })
         }
         composable<ProductsRoute> {
-            ProductsScreen(vm, onOpen = { nav.navigate(ProductRoute(it.id)) },
+            ProductsScreen(portfolio, onOpen = { nav.navigate(ProductRoute(it.id)) },
                 onCreate = { nav.navigate(ProductEditRoute(java.util.UUID.randomUUID().toString(), isNew = true)) })
         }
-        composable<ReposRoute> { ReposScreen(vm, onOpen = { openRepo(it, "overview") }) }
-        composable<SettingsRoute> { SettingsScreen(vm, onManageRepos = { nav.navigate(RepoVisibilityRoute) }) }
-        composable<RepoVisibilityRoute> { RepoVisibilityScreen(vm, onBack = { nav.popBackStack() }) }
+        composable<ReposRoute> { ReposScreen(vm, repositories, onOpen = { openRepo(it, "overview") }) }
+        composable<SettingsRoute> {
+            SettingsScreen(vm, vm.user, onSignOut = vm::logout, repositories, portfolio, onManageRepos = { nav.navigate(RepoVisibilityRoute) })
+        }
+        composable<RepoVisibilityRoute> { RepoVisibilityScreen(repositories, onBack = { nav.popBackStack() }) }
         composable<ProductRoute> { backStack ->
             val route = backStack.toRoute<ProductRoute>()
-            ProductScreen(vm, route.productId, onBack = { nav.popBackStack() },
+            ProductScreen(portfolio, repositories, vm.inbox, vm.github, route.productId, onBack = { nav.popBackStack() },
                 onEdit = { nav.navigate(ProductEditRoute(route.productId, isNew = false)) },
                 onOpenRepo = openRepo)
         }
         composable<ProductEditRoute> { backStack ->
             val route = backStack.toRoute<ProductEditRoute>()
-            val original = if (route.isNew) Product(route.productId, "") else vm.products.firstOrNull { it.id == route.productId }
+            val original = if (route.isNew) Product(route.productId, "") else portfolio.find(route.productId)
             if (original == null) MissingScreen("Product not found", "It may have been deleted.") { nav.popBackStack() }
-            else ProductEditor(original, vm.repos.filterNot { it.id in vm.excludedRepos }, vm.portfolioError,
+            else ProductEditor(original, repositories.included, portfolio.error,
                 onCancel = { nav.popBackStack() },
                 onSave = { product ->
-                    if (vm.saveProduct(product)) {
+                    if (portfolio.save(product)) {
                         if (route.isNew) nav.navigate(ProductRoute(product.id)) { popUpTo<ProductEditRoute> { inclusive = true } }
                         else nav.popBackStack()
                     }
@@ -101,11 +105,11 @@ private fun VardeNavHost(vm: Workspace, nav: NavHostController, modifier: Modifi
         }
         composable<RepositoryRoute> { backStack ->
             val route = backStack.toRoute<RepositoryRoute>()
-            val repo = vm.repos.firstOrNull { it.id == route.repoId }
+            val repo = repositories.find(route.repoId)
             if (repo == null) {
                 if (vm.busy) Box(Modifier.fillMaxSize()) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 else MissingScreen("Repository unavailable", "Refresh GitHub data or check that you still have access.") { nav.popBackStack() }
-            } else RepositoryWorkspace(vm, repo, route.page,
+            } else RepositoryWorkspace(vm.github, repo, route.page,
                 onNavigate = { page -> nav.navigate(RepositoryRoute(repo.id, page)) },
                 onBack = { nav.popBackStack() })
         }
@@ -122,11 +126,11 @@ private fun MissingScreen(title: String, message: String, onBack: () -> Unit) {
 
 /** Account-wide sync state shown at the top of each tab. */
 @Composable
-internal fun SyncStatus(vm: Workspace, modifier: Modifier = Modifier) {
+internal fun SyncStatus(sync: SyncInfo, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (vm.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        vm.error?.let { Notice("Couldn't refresh", it, NoticeKind.Error) }
-        vm.snapshotTime?.let { time ->
+        if (sync.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        sync.error?.let { Notice("Couldn't refresh", it, NoticeKind.Error) }
+        sync.snapshotTime?.let { time ->
             Notice("Showing saved repositories", "Saved ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(time))}. Refresh when you're online.")
         }
     }

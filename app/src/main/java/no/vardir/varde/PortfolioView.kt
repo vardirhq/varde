@@ -16,20 +16,20 @@ import androidx.compose.ui.unit.dp
 private fun prioritySort(priority: String) = when (priority) { "High" -> 0; "Normal" -> 1; else -> 2 }
 
 @Composable
-internal fun ProductsScreen(vm: Workspace, onOpen: (Product) -> Unit, onCreate: () -> Unit) {
-    val sorted = vm.products.sortedWith(compareByDescending<Product> { it.focused }
+internal fun ProductsScreen(portfolio: PortfolioStore, onOpen: (Product) -> Unit, onCreate: () -> Unit) {
+    val sorted = portfolio.products.sortedWith(compareByDescending<Product> { it.focused }
         .thenBy { prioritySort(it.priority) }.thenBy { it.name.lowercase() })
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { ScreenTitle("Products", "Group repositories, set priorities and track next steps") }
-            vm.portfolioError?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error) } }
-            if (vm.products.isEmpty() && vm.portfolioError == null) item {
+            portfolio.error?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error) } }
+            if (portfolio.products.isEmpty() && portfolio.error == null) item {
                 Notice("No products yet", "A product groups related repositories with its stage, priority and next step.")
             }
             items(sorted, key = { it.id }) { product -> ProductCard(product) { onOpen(product) } }
         }
-        if (vm.portfolioError == null) ExtendedFloatingActionButton(onClick = onCreate,
+        if (portfolio.error == null) ExtendedFloatingActionButton(onClick = onCreate,
             icon = { Icon(Icons.Default.Add, contentDescription = null) }, text = { Text("New product") },
             modifier = Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(16.dp))
     }
@@ -37,9 +37,10 @@ internal fun ProductsScreen(vm: Workspace, onOpen: (Product) -> Unit, onCreate: 
 
 @Composable
 internal fun ProductScreen(
-    vm: Workspace, productId: String, onBack: () -> Unit, onEdit: () -> Unit, onOpenRepo: (Repo, String) -> Unit,
+    portfolio: PortfolioStore, repositories: RepositoryState, inbox: AttentionInbox, github: GitHubApi,
+    productId: String, onBack: () -> Unit, onEdit: () -> Unit, onOpenRepo: (Repo, String) -> Unit,
 ) {
-    val product = vm.products.firstOrNull { it.id == productId }
+    val product = portfolio.find(productId)
     var confirmDelete by remember { mutableStateOf(false) }
     var showHandover by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
@@ -50,25 +51,25 @@ internal fun ProductScreen(
         }
         return
     }
-    val available = product.repositoryIds.mapNotNull { id -> vm.repos.firstOrNull { it.id == id && id !in vm.excludedRepos } }
+    val available = product.repositoryIds.mapNotNull { id -> repositories.included.firstOrNull { it.id == id } }
     val missing = product.repositoryIds.size - available.size
-    if (showHandover) ProductHandover(vm, product, available) { showHandover = false }
+    if (showHandover) ProductHandover(github, inbox, repositories, product, available) { showHandover = false }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
         title = { Text("Delete ${product.name}?") },
         text = { Text("This removes the local product, notes, and milestones. GitHub repositories are unchanged.") },
         confirmButton = { TextButton(onClick = {
             confirmDelete = false
-            if (vm.deleteProduct(product.id)) onBack()
+            if (portfolio.delete(product.id)) onBack()
         }) { Text("Delete product") } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } })
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             DetailTopBar(product.name, onBack, eyebrow = "Product", actions = {
-                TextButton(onClick = onEdit, enabled = vm.portfolioError == null) { Text("Edit") }
+                TextButton(onClick = onEdit, enabled = portfolio.error == null) { Text("Edit") }
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More product actions") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text("Delete product…") }, enabled = vm.portfolioError == null,
+                        DropdownMenuItem(text = { Text("Delete product…") }, enabled = portfolio.error == null,
                             onClick = { menu = false; confirmDelete = true })
                     }
                 }
@@ -81,14 +82,14 @@ internal fun ProductScreen(
                 Tag("${product.priority} priority")
             }
         }
-        vm.portfolioError?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
+        portfolio.error?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
         item { Box(Modifier.padding(horizontal = ScreenGutter)) { ProductOverview(product) } }
         item {
             OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth().padding(horizontal = ScreenGutter)) {
                 Text("Prepare agent handover")
             }
         }
-        item { Box(Modifier.padding(horizontal = ScreenGutter)) { ProductWork(vm, product, available) } }
+        item { Box(Modifier.padding(horizontal = ScreenGutter)) { ProductWork(portfolio, github, product, available) } }
         item { SectionHeader("Repositories", Modifier.padding(horizontal = ScreenGutter)) }
         if (available.isEmpty()) item { Notice("No visible repositories linked", "Edit the product to link repositories.",
             modifier = Modifier.padding(horizontal = ScreenGutter)) }
@@ -99,7 +100,7 @@ internal fun ProductScreen(
                 NavRow(repo.name, repo.owner) { onOpenRepo(repo, "overview") }
             }
         }
-        item { Box(Modifier.padding(horizontal = ScreenGutter)) { ProductActivity(vm, product, available, onOpenRepo) } }
+        item { Box(Modifier.padding(horizontal = ScreenGutter)) { ProductActivity(github, inbox, repositories, product, available, onOpenRepo) } }
     }
 }
 

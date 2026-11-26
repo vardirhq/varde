@@ -20,34 +20,35 @@ import java.util.Calendar
 
 @Composable
 internal fun InboxScreen(
-    vm: Workspace, onOpenItem: (AttentionItem) -> Unit, onOpenProduct: (Product) -> Unit, onShowProducts: () -> Unit,
+    sync: SyncInfo, user: String, inbox: AttentionInbox, repositories: RepositoryState, portfolio: PortfolioStore,
+    onOpenItem: (AttentionItem) -> Unit, onOpenProduct: (Product) -> Unit, onShowProducts: () -> Unit,
 ) {
-    val sections = inboxSections(includedAttention(vm.feedItems + vm.attention, vm.excludedRepos))
+    val sections = inboxSections(inbox.items(repositories.excluded))
     val count = sections.sumOf { it.second.size }
-    val now = remember(vm.feedItems, vm.attention) { java.time.Instant.now() }
-    val focused = vm.products.filter { it.focused }.sortedBy { it.name.lowercase() }
+    val now = remember(inbox.feedItems, inbox.assigned) { java.time.Instant.now() }
+    val focused = portfolio.products.filter { it.focused }.sortedBy { it.name.lowercase() }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Hero(vm.user, count, loading = vm.feedLoading || (vm.busy && !vm.attentionLoaded)) }
-        item { SyncStatus(vm, Modifier.padding(horizontal = ScreenGutter)) }
+        item { Hero(user, count, loading = inbox.feedLoading || (sync.busy && !inbox.assignedLoaded)) }
+        item { SyncStatus(sync, Modifier.padding(horizontal = ScreenGutter)) }
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = ScreenGutter), verticalAlignment = Alignment.CenterVertically) {
                 SectionHeader("Needs attention", Modifier.weight(1f))
-                TextButton(onClick = vm::refresh, enabled = !vm.busy) { Text("Refresh") }
+                TextButton(onClick = sync::refresh, enabled = !sync.busy) { Text("Refresh") }
             }
         }
-        if (vm.feedLoading) item { Notice("Checking repositories…", "Looking for review requests, failing checks and workflows.",
+        if (inbox.feedLoading) item { Notice("Checking repositories…", "Looking for review requests, failing checks and workflows.",
             modifier = Modifier.padding(horizontal = ScreenGutter)) }
-        if (vm.feedIncomplete) item { Notice("Some items may be missing",
+        if (inbox.feedIncomplete) item { Notice("Some items may be missing",
             "Permissions, rate limits or result limits kept part of the inbox from loading.", NoticeKind.Warning,
             Modifier.padding(horizontal = ScreenGutter)) }
         val emptyState: Pair<String, String>? = when {
-            vm.attentionError != null -> null
-            !vm.attentionLoaded && vm.busy -> "Loading assigned work" to "Checking GitHub for open issues and pull requests assigned to you."
-            !vm.attentionLoaded -> "Assigned work not loaded" to "Refresh to check GitHub for assigned work."
-            count == 0 && !vm.feedLoading && !vm.feedIncomplete -> "You're all caught up" to "Review requests, failing checks, workflows and assigned work will appear here."
+            inbox.assignedError != null -> null
+            !inbox.assignedLoaded && sync.busy -> "Loading assigned work" to "Checking GitHub for open issues and pull requests assigned to you."
+            !inbox.assignedLoaded -> "Assigned work not loaded" to "Refresh to check GitHub for assigned work."
+            count == 0 && !inbox.feedLoading && !inbox.feedIncomplete -> "You're all caught up" to "Review requests, failing checks, workflows and assigned work will appear here."
             else -> null
         }
-        vm.attentionError?.let { item { Notice("Couldn't load assigned work", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
+        inbox.assignedError?.let { item { Notice("Couldn't load assigned work", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
         emptyState?.let { (title, message) -> item { Notice(title, message, modifier = Modifier.padding(horizontal = ScreenGutter)) } }
         sections.forEach { (section, entries) ->
             item(key = "section:${section.name}") {
@@ -59,8 +60,8 @@ internal fun InboxScreen(
             }
         }
         item { SectionHeader("Focused products", Modifier.padding(horizontal = ScreenGutter), "All products", onShowProducts) }
-        vm.portfolioError?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
-        if (focused.isEmpty() && vm.portfolioError == null) item {
+        portfolio.error?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
+        if (focused.isEmpty() && portfolio.error == null) item {
             Notice("Keep a product close", "Focus a product to keep its next step here.", modifier = Modifier.padding(horizontal = ScreenGutter))
         }
         items(focused, key = { it.id }) { product ->
