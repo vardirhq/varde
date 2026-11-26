@@ -70,9 +70,10 @@ internal fun ProductHandover(
                                 product.work.filterNot { it.done }.take(15).forEach { appendLine("Open ${it.kind.lowercase()}: ${it.title}") }
                                 appendLine("Repositories: " + repos.filter { it.id in selected }.joinToString { "${it.owner}/${it.name}" })
                             }
-                            val result = assistant.use { draftBrief(it, request, context) }
-                            if (result != null) { beforeDraft = request; request = result.asRequest(); draftNote = DraftedNote }
-                            else draftNote = "Couldn't draft on this phone. Your text is unchanged."
+                            when (val result = assistant.use { draftBrief(it, request, context) }) {
+                                is AssistResult.Done -> { beforeDraft = request; request = result.value.asRequest(); draftNote = DraftedNote }
+                                is AssistResult.Failed -> draftNote = "Couldn't draft; your text is unchanged. ${result.reason}"
+                            }
                             drafting = false
                         }
                     }

@@ -68,7 +68,7 @@ internal fun JobLogPanel(body: String, assistant: OnDeviceAssistant) {
     val scope = rememberCoroutineScope()
     var suggesting by remember(body) { mutableStateOf(false) }
     var suggestion by remember(body) { mutableStateOf<String?>(null) }
-    var suggestionFailed by remember(body) { mutableStateOf(false) }
+    var suggestionFailed by remember(body) { mutableStateOf<String?>(null) }
     val excerpt = remember(body) { failureExcerpt(body) }
     var showFull by remember(body) { mutableStateOf(false) }
     VardeCard {
@@ -77,15 +77,17 @@ internal fun JobLogPanel(body: String, assistant: OnDeviceAssistant) {
                 color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
             // The model only picks line numbers; the suggestion is cut from the real log.
             if (assistant.ready && suggestion == null) AssistButton("Suggest the important lines", suggesting) {
-                suggesting = true; suggestionFailed = false
+                suggesting = true; suggestionFailed = null
                 scope.launch {
-                    suggestion = assistant.use { suggestLogExcerpt(it, body) }
-                    suggestionFailed = suggestion == null
+                    when (val result = assistant.use { suggestLogExcerpt(it, body) }) {
+                        is AssistResult.Done -> suggestion = result.value
+                        is AssistResult.Failed -> suggestionFailed = result.reason
+                    }
                     suggesting = false
                 }
             }
-            if (suggestionFailed) Text("Couldn't suggest lines on this phone.", style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            suggestionFailed?.let { reason -> Text("Couldn't suggest lines. $reason", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant) }
             suggestion?.let { lines ->
                 Text("Suggested lines", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                 Text("Picked by on-device AI from this log. It may be wrong; the full log is below.", style = MaterialTheme.typography.bodySmall,

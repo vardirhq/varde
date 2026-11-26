@@ -26,7 +26,7 @@ import java.util.Date
 private data class WorkspaceLink(val title: String, val subtitle: String, val route: String, val status: StatusLabel? = null)
 
 @Composable
-internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTracker, assistant: OnDeviceAssistant, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
+internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTracker, assistant: OnDeviceAssistant, dismissed: DismissedItems, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
     var payload by remember { mutableStateOf<CachedResponse?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -172,6 +172,13 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                     if (links.isEmpty() && result.isSuccess) item {
                         Notice("Nothing here yet", "There is nothing to show in this view.")
                     }
+                    // Overview: the starting point for handing a new task about this repository to an agent.
+                    if (page == "overview") item {
+                        OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Hand a task to an agent") }
+                    }
+                    if (page.startsWith("issue:")) item {
+                        OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Hand this issue to an agent") }
+                    }
                     if (page.startsWith("issue:") && !response.cached) item {
                         OutlinedButton(onClick = { writeKind = WriteKind.COMMENT }, modifier = Modifier.fillMaxWidth()) { Text("Add comment") }
                     }
@@ -216,6 +223,10 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                             Notice(if (kind == NoticeKind.Error) "Rerun not started" else "Rerun requested", message, kind)
                         } }
                         item { OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare agent handover") } }
+                        page.substringAfter(':').toLongOrNull()?.let { runId ->
+                            item { SectionHeader("Not going to fix it?") }
+                            item { RunActions(github, dismissed, repo, runId, onDeleted = onBack) }
+                        }
                     }
                 }
             }
@@ -224,7 +235,7 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
     }
 }
 
-private fun workspacePageTitle(page: String): String = when {
+internal fun workspacePageTitle(page: String): String = when {
     page == "overview" -> "Repository overview"
     page == "commits" -> "Recent commits"
     page == "issues" -> "Open issues"

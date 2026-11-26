@@ -29,7 +29,8 @@ import androidx.compose.ui.unit.dp
 internal fun SettingsScreen(
     sync: SyncInfo, user: String, onSignOut: () -> Unit, repositories: RepositoryState, portfolio: PortfolioStore,
     notifications: NotificationPrefs, onSetNotifications: (Boolean) -> Unit,
-    assistant: OnDeviceAssistant, onSetAssistance: (Boolean) -> Unit, onDownloadModel: () -> Unit, onManageRepos: () -> Unit,
+    assistant: OnDeviceAssistant, onSetAssistance: (Boolean) -> Unit, onDownloadModel: () -> Unit, onTestAssistant: () -> Unit,
+    onManageRepos: () -> Unit,
 ) {
     val visible = repositories.included.size
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 24.dp),
@@ -54,7 +55,7 @@ internal fun SettingsScreen(
         item { SectionHeader("Notifications") }
         item { NotificationSettings(notifications, onSetNotifications) }
         item { SectionHeader("On-device assistance") }
-        item { AssistanceSettings(assistant, onSetAssistance, onDownloadModel) }
+        item { AssistanceSettings(assistant, onSetAssistance, onDownloadModel, onTestAssistant) }
         item { SectionHeader("Portfolio") }
         item { VardeCard { PortfolioBackupControls(portfolio) } }
     }
@@ -142,7 +143,7 @@ private fun SwitchRow(title: String, detail: String, checked: Boolean, onChange:
 }
 
 @Composable
-private fun AssistanceSettings(assistant: OnDeviceAssistant, onSet: (Boolean) -> Unit, onDownload: () -> Unit) {
+private fun AssistanceSettings(assistant: OnDeviceAssistant, onSet: (Boolean) -> Unit, onDownload: () -> Unit, onTest: () -> Unit) {
     VardeCard(contentPadding = PaddingValues(vertical = 8.dp)) {
         SwitchRow("Use on-device AI", "Drafts handover tasks and acceptance criteria, rewrites review comments and suggests important log lines, using Gemini Nano on this phone. Everything it writes stays editable.",
             assistant.enabled, onSet)
@@ -159,7 +160,7 @@ private fun AssistanceSettings(assistant: OnDeviceAssistant, onSet: (Boolean) ->
                     }
                     assistant.status == null -> Text("Checking this phone…", style = MaterialTheme.typography.bodyMedium)
                     assistant.status == ModelStatus.Unavailable -> Notice("Not available on this phone",
-                        "Gemini Nano runs on recent phones with Google's AICore. Varde works the same without it.", NoticeKind.Warning)
+                        assistant.statusReason ?: "Gemini Nano runs on recent phones with Google's AICore. Varde works the same without it.", NoticeKind.Warning)
                     assistant.status == ModelStatus.Downloadable -> {
                         Text("The model needs to be downloaded once. Android manages the download and may wait for Wi-Fi; the model is shared with other apps.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -171,6 +172,10 @@ private fun AssistanceSettings(assistant: OnDeviceAssistant, onSet: (Boolean) ->
                         style = MaterialTheme.typography.bodyMedium)
                 }
                 assistant.downloadError?.let { Notice("Download failed", it, NoticeKind.Error) }
+                if (!downloading && assistant.status != null) OutlinedButton(onClick = onTest, enabled = !assistant.testing) {
+                    Text(if (assistant.testing) "Testing…" else "Test on this phone")
+                }
+                assistant.testResult?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 Text("Your text is processed on this phone. Repository instructions and tracking IDs are never given to the model. Varde starts Google's ML Kit only while this is on; ML Kit may send Google usage statistics about the feature, which according to Google don't include your text.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

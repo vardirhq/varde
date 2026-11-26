@@ -40,13 +40,14 @@ internal fun HandoverDialog(
     val trackingId = remember { newTrackingId() }
     // A handover about an existing pull request follows that PR; otherwise the agent's new PR is found by tracking ID.
     val existingPull = if (page.startsWith("pull:") || page.startsWith("changes:")) page.substringAfter(':').toIntOrNull() else null
+    val issueNumber = if (page.startsWith("issue:")) page.substringAfter(':').toIntOrNull() else null
     fun record() {
         if (!track || tracked) return
         val sha = if (page.startsWith("pull:")) response?.let { r ->
             runCatching { JSONObject(r.body).optJSONObject("head")?.optString("sha").orEmpty() }.getOrDefault("")
         }.orEmpty() else ""
         val title = request.lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }?.take(100)
-            ?: existingPull?.let { "Follow-up on #$it" } ?: "Agent task"
+            ?: existingPull?.let { "Follow-up on #$it" } ?: issueNumber?.let { "Issue #$it" } ?: "Agent task"
         tracked = delegations.add(Delegation(trackingId, repo.id, "${repo.owner}/${repo.name}", title,
             java.time.Instant.now().toString(), existingPull, sha))
         trackError = if (tracked) null else "Couldn't save tracking. The brief is unchanged."
@@ -78,6 +79,8 @@ internal fun HandoverDialog(
                 (0 until files.length()).mapNotNull { files.optJSONObject(it) }
                     .joinToString("\n") { jsonText(it, "filename") + " · " + jsonText(it, "status") }
             }.getOrDefault("Changed files unavailable.")
+            page == "overview" -> runCatching { repositoryEvidence(response.body) }.getOrDefault("Repository details unavailable.")
+            page.startsWith("issue:") -> runCatching { issueEvidence(response.body) }.getOrDefault("Issue details unavailable.")
             else -> ""
         }
     }
@@ -94,6 +97,18 @@ internal fun HandoverDialog(
                 found.add(("$name (repository default branch" + if (result.cached) ", cached)" else ")") to decoded.take(16000))
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { missing.add("$name unavailable; check it manually.") }
+        }
+        if (page == "overview" || page.startsWith("issue:")) {
+            try {
+                additionalEvidence = if (page == "overview") {
+                    val commits = github.load(repoApi(repo) + "/commits?per_page=10")
+                    "Recent commits on the default branch" + (if (commits.cached) " (cached)" else "") + ":\n" + recentCommits(commits.body)
+                } else {
+                    val comments = github.load(repoApi(repo) + "/issues/" + issueNumber + "/comments?per_page=30")
+                    issueComments(comments.body).let { if (it.isBlank()) "" else "Issue comments" + (if (comments.cached) " (cached)" else "") + ":\n" + it }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { missing.add(if (page == "overview") "Recent commits unavailable." else "Issue comments unavailable; read them on GitHub.") }
         }
         if (page.startsWith("pull:") && response != null) {
             try {
@@ -132,9 +147,10 @@ internal fun HandoverDialog(
                     if (assistant.ready) AssistButton("Draft task and criteria", drafting, enabled = request.isNotBlank() && !loading) {
                         drafting = true
                         scope.launch {
-                            val result = assistant.use { draftBrief(it, request, listOf(evidence, additionalEvidence).filter { e -> e.isNotBlank() }.joinToString("\n\n")) }
-                            if (result != null) { beforeDraft = request; request = result.asRequest(); draftNote = DraftedNote }
-                            else draftNote = "Couldn't draft on this phone. Your text is unchanged."
+                            when (val result = assistant.use { draftBrief(it, request, listOf(evidence, additionalEvidence).filter { e -> e.isNotBlank() }.joinToString("\n\n")) }) {
+                                is AssistResult.Done -> { beforeDraft = request; request = result.value.asRequest(); draftNote = DraftedNote }
+                                is AssistResult.Failed -> draftNote = "Couldn't draft; your text is unchanged. ${result.reason}"
+                            }
                             drafting = false
                         }
                     }
@@ -163,7 +179,7 @@ internal fun HandoverDialog(
         confirmButton = {
             if (draft == null) TextButton(enabled = !loading, onClick = {
                 val note = if (warnings.isEmpty()) "" else warnings.joinToString("\n")
-                draft = buildHandover(repo.url, page, request, listOf(evidence, additionalEvidence, note).filter { it.isNotBlank() }.joinToString("\n\n"), instructions) +
+                draft = buildHandover(repo.url, workspacePageTitle(page), request, listOf(evidence, additionalEvidence, note).filter { it.isNotBlank() }.joinToString("\n\n"), instructions) +
                     if (track && existingPull == null) trackingInstruction(trackingId) else ""
             }) { Text("Review brief") }
             else TextButton(onClick = {

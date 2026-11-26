@@ -11,7 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -22,14 +24,21 @@ import java.util.Calendar
 @Composable
 internal fun InboxScreen(
     sync: SyncInfo, user: String, inbox: AttentionInbox, repositories: RepositoryState, portfolio: PortfolioStore,
-    delegations: DelegationTracker, onDelegationsChanged: () -> Unit, onOpenItem: (AttentionItem) -> Unit, onOpenPull: (Long, Int) -> Unit,
+    delegations: DelegationTracker, dismissed: DismissedItems, onDelegationsChanged: () -> Unit, onOpenItem: (AttentionItem) -> Unit, onOpenPull: (Long, Int) -> Unit,
     onOpenProduct: (Product) -> Unit, onShowProducts: () -> Unit,
 ) {
     val delegated = inboxDelegations(delegations)
     // A tracked pull request is shown once, under Delegated, with its delegation status.
     val trackedPulls = delegated.mapNotNull { it.second?.pull?.htmlUrl?.takeIf { url -> url.isNotBlank() } }.toSet()
-    val sections = inboxSections(inbox.items(repositories.excluded).filterNot { it.url in trackedPulls })
+    val allSections = inboxSections(inbox.items(repositories.excluded).filterNot { it.url in trackedPulls })
+    val sections = allSections.map { (s, entries) -> s to entries.filterNot { isDismissed(it, dismissed.keys) } }.filter { it.second.isNotEmpty() }
+    val hiddenCount = allSections.sumOf { it.second.size } - sections.sumOf { it.second.size }
     val count = sections.sumOf { it.second.size } + delegated.count { it.second?.stage?.needsYou == true }
+    // Expire dismissals whose items are gone, but only after a complete load, so a partial one can't resurface items.
+    val complete = inbox.assignedLoaded && !inbox.feedLoading && !inbox.feedIncomplete && sync.snapshotTime == null
+    LaunchedEffect(complete, inbox.feedItems, inbox.assigned) { if (complete) dismissed.expire(inbox.items(repositories.excluded)) }
+    var undo by remember { mutableStateOf<List<AttentionItem>?>(null) }
+    fun dismiss(items: List<AttentionItem>) { dismissed.dismiss(items); undo = items }
     var openDelegation by remember { mutableStateOf<String?>(null) }
     openDelegation?.let { id -> delegations.find(id) }?.let { d ->
         val id = d.id
@@ -65,6 +74,10 @@ internal fun InboxScreen(
         }
         inbox.assignedError?.let { item { Notice("Couldn't load assigned work", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
         emptyState?.let { (title, message) -> item { Notice(title, message, modifier = Modifier.padding(horizontal = ScreenGutter)) } }
+        undo?.let { items -> item(key = "undo") {
+            UndoBar(if (items.size == 1) "Dismissed \u201c${items.single().title}\u201d" else "Dismissed ${items.size} items",
+                Modifier.padding(horizontal = ScreenGutter), onUndo = { dismissed.restore(items); undo = null }, onClose = { undo = null })
+        } }
         // Delegated work sits after review requests and before assigned work.
         val delegatedAt = sections.indexOfFirst { it.first == InboxSection.Assigned }.let { if (it < 0) sections.size else it }
         sections.forEachIndexed { index, (section, entries) ->
@@ -73,11 +86,25 @@ internal fun InboxScreen(
                 Text("${section.title} · ${entries.size}", Modifier.padding(horizontal = ScreenGutter).padding(top = 4.dp)
                     .semantics { heading() }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            val stale = if (section == InboxSection.Failing) staleFailures(entries, now) else emptyList()
+            if (stale.isNotEmpty()) item(key = "stale") {
+                TextButton(onClick = { dismiss(stale) }, modifier = Modifier.padding(horizontal = ScreenGutter - 8.dp)) {
+                    Text("Dismiss the ${stale.size} older than 2 weeks")
+                }
+            }
             items(entries, key = { "${it.kind}:${it.url}" }) { entry ->
-                AttentionCard(entry, now, Modifier.padding(horizontal = ScreenGutter)) { onOpenItem(entry) }
+                // Assigned work stays: it's yours on GitHub until it's unassigned or closed.
+                if (section == InboxSection.Assigned) AttentionCard(entry, now, Modifier.padding(horizontal = ScreenGutter)) { onOpenItem(entry) }
+                else SwipeToDismiss(onDismiss = { dismiss(listOf(entry)) }, modifier = Modifier.padding(horizontal = ScreenGutter)) {
+                    AttentionCard(entry, now) { onOpenItem(entry) }
+                }
             }
         }
         if (delegatedAt == sections.size) delegatedSection(delegated, delegations, now) { openDelegation = it }
+        if (hiddenCount > 0) item(key = "hidden") {
+            TextButton(onClick = { val all = allSections.flatMap { it.second }.filter { isDismissed(it, dismissed.keys) }; dismissed.restore(all); undo = null },
+                modifier = Modifier.padding(horizontal = ScreenGutter - 8.dp)) { Text("Show $hiddenCount dismissed") }
+        }
         item { SectionHeader("Focused products", Modifier.padding(horizontal = ScreenGutter), "All products", onShowProducts) }
         portfolio.error?.let { item { Notice("Portfolio unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
         if (focused.isEmpty() && portfolio.error == null) item {
@@ -169,5 +196,36 @@ private fun LazyListScope.delegatedSection(
     tracker.error?.let { item { Notice("Delegations unavailable", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
     items(delegated, key = { "delegation:${it.first.id}" }) { (d, status) ->
         DelegationCard(d, status, now, Modifier.padding(horizontal = ScreenGutter)) { onOpen(d.id) }
+    }
+}
+
+/** Swipe either way to dismiss; TalkBack gets the same action as a custom action. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeToDismiss(onDismiss: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val state = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
+        if (value != SwipeToDismissBoxValue.Settled) { onDismiss(); true } else false
+    })
+    SwipeToDismissBox(state = state,
+        modifier = modifier.semantics { customActions = listOf(CustomAccessibilityAction("Dismiss") { onDismiss(); true }) },
+        backgroundContent = {
+            val toEnd = state.dismissDirection == SwipeToDismissBoxValue.StartToEnd
+            Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh, CardShape).padding(horizontal = 24.dp),
+                horizontalArrangement = if (toEnd) Arrangement.Start else Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                Text("Dismiss", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }) { content() }
+}
+
+@Composable
+private fun UndoBar(text: String, modifier: Modifier = Modifier, onUndo: () -> Unit, onClose: () -> Unit) {
+    Surface(modifier.fillMaxWidth(), shape = CardShape, color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface) {
+        Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, Modifier.weight(1f).padding(vertical = 12.dp), style = MaterialTheme.typography.bodyMedium, maxLines = 2,
+                overflow = TextOverflow.Ellipsis)
+            TextButton(onClick = onUndo) { Text("Undo", color = MaterialTheme.colorScheme.inversePrimary) }
+            TextButton(onClick = onClose) { Text("OK", color = MaterialTheme.colorScheme.inverseOnSurface) }
+        }
     }
 }

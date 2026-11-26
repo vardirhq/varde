@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.*
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import android.os.SystemClock
@@ -116,6 +117,24 @@ class GitHub(private val clientId: String) {
             if (response.code == 401) throw Unauthorized()
             check(response.isSuccessful) { rerunFailureMessage(response.code, response.body?.string().orEmpty()) }
         }
+    }
+    /** Permanently deletes a completed workflow run and its logs. */
+    internal suspend fun deleteRun(repo: Repo, runId: Long, token: String) =
+        actionsWrite(repoApi(repo) + "/actions/runs/$runId", "DELETE", token, "delete this run")
+    /** Stops a workflow from running on any trigger until it's enabled again on GitHub. */
+    internal suspend fun disableWorkflow(repo: Repo, workflowId: Long, token: String) =
+        actionsWrite(repoApi(repo) + "/actions/workflows/$workflowId/disable", "PUT", token, "disable this workflow")
+    private suspend fun actionsWrite(path: String, method: String, token: String, what: String) = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url("https://api.github.com/$path")
+            .header("Authorization", "Bearer $token").header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .method(method, if (method == "DELETE") null else ByteArray(0).toRequestBody(null)).build()
+        try {
+            http.newCall(request).execute().use { response ->
+                if (response.code == 401) throw Unauthorized()
+                check(response.isSuccessful) { actionsWriteFailure(response.code, what, response.body?.string().orEmpty()) }
+            }
+        } catch (e: java.io.IOException) { throw WriteOutcomeUnknown(e) }
     }
     internal suspend fun jobLog(path: String, token: String): String = withContext(Dispatchers.IO) {
         // OkHttp strips the Authorization header when GitHub redirects to a different host.

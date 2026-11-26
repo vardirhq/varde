@@ -76,3 +76,15 @@ internal fun rerunFailureMessage(code: Int, body: String): String {
     return listOf("GitHub refused the rerun (HTTP $code).", reason.takeIf { it.isNotBlank() }?.let { "GitHub says: \"$it\"" }, hint)
         .filterNotNull().joinToString(" ")
 }
+
+/** Explains a refused Actions write, including GitHub's own message. */
+internal fun actionsWriteFailure(code: Int, what: String, body: String): String {
+    val reason = runCatching { org.json.JSONObject(body).optString("message") }.getOrDefault("").replace(Regex("\\s+"), " ").trim().take(200)
+    val hint = when (code) {
+        403 -> "This needs write access to the repository. If you signed in without it, sign out and reconnect with write access."
+        404 -> "It may already be gone, or you no longer have access."
+        409 -> "Runs that are still in progress can't be deleted; cancel or wait for it first."
+        else -> "Refresh and try again."
+    }
+    return listOfNotNull("GitHub refused to $what (HTTP $code).", reason.takeIf { it.isNotBlank() }?.let { "GitHub says: \"$it\"" }, hint).joinToString(" ")
+}
