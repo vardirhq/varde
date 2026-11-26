@@ -7,23 +7,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun ProductActivity(vm: Workspace, product: Product, repos: List<Repo>, onOpenRepo: (Repo, String) -> Unit) {
+internal fun ProductActivity(
+    github: GitHubApi, inbox: AttentionInbox, repositories: RepositoryState, product: Product, repos: List<Repo>, onOpenRepo: (Repo, String) -> Unit) {
     var evidence by remember(product.id, repos) { mutableStateOf<ProductEvidence?>(null) }
     LaunchedEffect(product.id, repos) {
         evidence = null
-        evidence = loadProductEvidence(repos) { vm.workspaceLoad(it) }
+        evidence = loadProductEvidence(repos) { github.load(it) }
     }
-    val failures = productAttention(product, vm.feedItems, vm.excludedRepos)
-        .filter { it.kind == "Latest workflow run failed" }
+    val failures = productAttention(product, inbox.feedItems, repositories.excluded)
+        .filter { it.kind == AttentionKind.WorkflowFailed }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("GitHub activity", style = MaterialTheme.typography.titleLarge)
-        if (vm.feedLoading) Text("Checking workflow runs…", style = MaterialTheme.typography.bodySmall)
-        if (vm.feedIncomplete || !vm.attentionLoaded || vm.snapshotTime != null) Text("Workflow coverage may be incomplete or unavailable.", color = MaterialTheme.colorScheme.error,
+        SectionHeader("GitHub activity")
+        if (inbox.feedLoading) Text("Checking workflow runs…", style = MaterialTheme.typography.bodySmall)
+        if (inbox.feedIncomplete || !inbox.assignedLoaded || repositories.snapshotTime != null) Text("Workflow coverage may be incomplete or unavailable.", color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall)
         if (evidence == null) LinearProgressIndicator(Modifier.fillMaxWidth())
         evidence?.notes?.forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
         Text("Failed workflows", style = MaterialTheme.typography.titleSmall)
-        if (failures.isEmpty() && !vm.feedLoading && !vm.feedIncomplete && vm.attentionLoaded && vm.snapshotTime == null) Text("No failed workflows found in the latest observed runs.",
+        if (failures.isEmpty() && !inbox.mayBeIncomplete(offline = repositories.snapshotTime != null)) Text("No failed workflows found in the latest observed runs.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         failures.forEach { entry ->
             val repo = repos.firstOrNull { it.id == entry.repositoryId }
@@ -37,8 +38,8 @@ internal fun ProductActivity(vm: Workspace, product: Product, repos: List<Repo>,
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         evidence?.events?.forEach { event ->
             val repo = repos.firstOrNull { it.id == event.repositoryId }
-            if (repo != null) OutlinedCard(onClick = { onOpenRepo(repo, event.route) }, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
+            if (repo != null) VardeCard(onClick = { onOpenRepo(repo, event.route) }, contentPadding = PaddingValues(12.dp)) {
+                Column {
                     Text(event.title, style = MaterialTheme.typography.bodyMedium)
                     Text("${event.repository} · ${event.kind}" +
                         if (event.timestamp.isBlank()) "" else " · ${event.timestamp.take(10)}",

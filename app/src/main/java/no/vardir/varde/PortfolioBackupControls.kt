@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 
 @Composable
-internal fun PortfolioBackupControls(vm: Workspace) {
+internal fun PortfolioBackupControls(portfolio: PortfolioStore) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var exportData by remember { mutableStateOf<String?>(null) }
@@ -54,7 +54,7 @@ internal fun PortfolioBackupControls(vm: Workspace) {
                         out.toString("UTF-8")
                     } ?: error("Could not open the selected file.")
                 }
-                val account = vm.user
+                val account = portfolio.account
                 val parsed = decodePortfolioBackup(raw, account)
                 candidateCount = parsed.size
                 candidateAccount = account
@@ -68,7 +68,7 @@ internal fun PortfolioBackupControls(vm: Workspace) {
         AlertDialog(onDismissRequest = { candidate = null }, title = { Text("Replace this portfolio?") },
             text = { Text("Restore $candidateCount products for $candidateAccount? This replaces the current local products and their notes. GitHub is unchanged.") },
             confirmButton = { TextButton(onClick = {
-                try { vm.restorePortfolio(raw, candidateAccount); message = "Portfolio restored." }
+                try { portfolio.restore(raw, candidateAccount); message = "Portfolio restored." }
                 catch (e: Exception) { message = e.message ?: "Could not restore the portfolio." }
                 candidate = null
             }) { Text("Replace portfolio") } },
@@ -79,11 +79,11 @@ internal fun PortfolioBackupControls(vm: Workspace) {
         Text("Export includes product notes and repository IDs. Keep the file somewhere you trust.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(enabled = !busy && vm.portfolioError == null && vm.user.isNotBlank(), onClick = {
-                try { exportData = vm.portfolioBackup(); export.launch("varde-portfolio.json") }
+            OutlinedButton(enabled = !busy && portfolio.error == null && portfolio.account.isNotBlank(), onClick = {
+                try { exportData = portfolio.backup(); export.launch("varde-portfolio.json") }
                 catch (e: Exception) { message = e.message ?: "Could not prepare the backup." }
             }) { Text("Export") }
-            OutlinedButton(enabled = !busy && vm.user.isNotBlank(), onClick = { restore.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) {
+            OutlinedButton(enabled = !busy && portfolio.account.isNotBlank(), onClick = { restore.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) {
                 Text("Restore")
             }
         }

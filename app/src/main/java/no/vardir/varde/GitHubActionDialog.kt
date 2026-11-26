@@ -13,7 +13,7 @@ import org.json.JSONObject
 
 @Composable
 internal fun GitHubActionDialog(
-    vm: Workspace, repo: Repo, number: Int, kind: WriteKind, reviewedSha: String,
+    github: GitHubApi, repo: Repo, number: Int, kind: WriteKind, reviewedSha: String,
     isPull: Boolean, onDismiss: () -> Unit, onSuccess: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -36,7 +36,7 @@ internal fun GitHubActionDialog(
     LaunchedEffect(kind, number, reviewedSha) {
         if (kind != WriteKind.COMMENT) {
             try {
-                val result = vm.workspaceLoad(repoApi(repo) + "/pulls/" + number)
+                val result = github.load(repoApi(repo) + "/pulls/" + number)
                 check(!result.cached) { "Cannot verify the current pull request offline. Reconnect and refresh." }
                 val pr = JSONObject(result.body)
                 val sha = pr.optJSONObject("head")?.optString("sha").orEmpty()
@@ -50,8 +50,8 @@ internal fun GitHubActionDialog(
                 prInfo = "${jsonText(pr, "title")}\n$head → $base\nCommit: ${sha.take(12)}"
                 if (kind == WriteKind.MERGE) {
                     try {
-                        val checkResponse = vm.workspaceLoad(repoApi(repo) + "/commits/" + pathPart(sha) + "/check-runs?per_page=100")
-                        val statusResponse = vm.workspaceLoad(repoApi(repo) + "/commits/" + pathPart(sha) + "/status")
+                        val checkResponse = github.load(repoApi(repo) + "/commits/" + pathPart(sha) + "/check-runs?per_page=100")
+                        val statusResponse = github.load(repoApi(repo) + "/commits/" + pathPart(sha) + "/status")
                         check(!checkResponse.cached && !statusResponse.cached) { "Checks could not be verified online." }
                         val checkJson = JSONObject(checkResponse.body)
                         val runs = checkJson.optJSONArray("check_runs")
@@ -106,7 +106,7 @@ internal fun GitHubActionDialog(
                 busy = true; error = null
                 scope.launch {
                     try {
-                        vm.submitWrite(repo, WriteAction(kind, number, body, reviewedSha, mergeMethod))
+                        github.submitWrite(repo, WriteAction(kind, number, body, reviewedSha, mergeMethod))
                         onSuccess()
                     } catch (e: CancellationException) { throw e }
                     catch (e: WriteOutcomeUnknown) { outcomeUnknown = true; error = e.message }

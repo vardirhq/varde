@@ -4,6 +4,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -33,25 +37,21 @@ internal fun ProductEditor(original: Product, repos: List<Repo>, error: String?,
             repositoryIds = selected, focused = focused))
     }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onSurface) {
-        LazyColumn(Modifier.fillMaxSize().safeDrawingPadding(), contentPadding = PaddingValues(20.dp),
+      Column(Modifier.fillMaxSize()) {
+        DetailTopBar(if (original.name.isBlank()) "New product" else "Edit product", onCancel,
+            subtitle = "Saved on this device for your GitHub account.", actions = {
+                TextButton(onClick = saveProduct, enabled = name.isNotBlank() && error == null) { Text("Save") }
+            })
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = onCancel) { Text("‹  Cancel") }
-                    TextButton(onClick = saveProduct, enabled = name.isNotBlank() && error == null) { Text("Save") }
-                }
-                Text(if (original.name.isBlank()) "New product" else "Edit product", style = MaterialTheme.typography.headlineSmall)
-                Text("Saved on this device for your GitHub account.", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
             error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             item { OutlinedTextField(name, { name = it.take(100) }, Modifier.fillMaxWidth(), label = { Text("Product name") }, singleLine = true) }
             item { OutlinedTextField(description, { description = it }, Modifier.fillMaxWidth(), label = { Text("Description") }, minLines = 2) }
             item { ChoiceField("Stage", stage, listOf("Exploring", "Building", "Maintaining", "Paused")) { stage = it } }
             item { ChoiceField("Priority", priority, listOf("High", "Normal", "Low")) { priority = it } }
             item { Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(focused, { focused = it }, modifier = Modifier.semantics { contentDescription = "Focus this product on Home" })
-                Text("Focus on Home", Modifier.padding(start = 12.dp).clickable { focused = !focused })
+                Switch(focused, { focused = it }, modifier = Modifier.semantics { contentDescription = "Focus this product" })
+                Text("Focus this product (shown in Inbox)", Modifier.padding(start = 12.dp).clickable { focused = !focused })
             } }
             item { OutlinedTextField(next, { next = it }, Modifier.fillMaxWidth(), label = { Text("What's next?") }, minLines = 2) }
             item { OutlinedTextField(milestones, { milestones = it }, Modifier.fillMaxWidth(), label = { Text("Milestones") },
@@ -68,9 +68,9 @@ internal fun ProductEditor(original: Product, repos: List<Repo>, error: String?,
                         if (repo != null) Text(repo.owner, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = { selected = moveRepository(selected, index, -1) }, enabled = index > 0,
-                        modifier = Modifier.semantics { contentDescription = "Move ${repo?.name ?: "repository"} up" }) { Text("↑") }
+                        modifier = Modifier.semantics { contentDescription = "Move ${repo?.name ?: "repository"} up" }) { Icon(Icons.Default.KeyboardArrowUp, contentDescription = null) }
                     TextButton(onClick = { selected = moveRepository(selected, index, 1) }, enabled = index < selected.lastIndex,
-                        modifier = Modifier.semantics { contentDescription = "Move ${repo?.name ?: "repository"} down" }) { Text("↓") }
+                        modifier = Modifier.semantics { contentDescription = "Move ${repo?.name ?: "repository"} down" }) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) }
                     TextButton(onClick = { selected = selected - id },
                         modifier = Modifier.semantics { contentDescription = "Unlink ${repo?.name ?: "repository"}" }) { Text("Remove") }
                 }
@@ -88,6 +88,7 @@ internal fun ProductEditor(original: Product, repos: List<Repo>, error: String?,
                     enabled = name.isNotBlank() && error == null, modifier = Modifier.fillMaxWidth()) { Text("Save product") }
             }
         }
+      }
     }
 }
 
@@ -95,7 +96,7 @@ internal fun ProductEditor(original: Product, repos: List<Repo>, error: String?,
 private fun ChoiceField(label: String, value: String, options: List<String>, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) { Text("$label: $value  ▾") }
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) { Text("$label: $value", Modifier.weight(1f)); Icon(Icons.Default.ArrowDropDown, contentDescription = null) }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { option ->
                 DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); expanded = false })

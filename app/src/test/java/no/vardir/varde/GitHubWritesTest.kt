@@ -40,4 +40,11 @@ class GitHubWritesTest {
         assertThrows(IllegalArgumentException::class.java) { buildWriteRequest(repo, WriteAction(WriteKind.MERGE, 1), "x") }
         assertThrows(IllegalArgumentException::class.java) { buildWriteRequest(repo, WriteAction(WriteKind.MERGE, 1, headSha = sha, mergeMethod = "invalid"), "x") }
     }
+    @Test fun rerunFailureIncludesGitHubReasonAndHint() {
+        val message = rerunFailureMessage(403, """{"message":"Unable to re-run this workflow run because it was created over a month ago"}""")
+        assertTrue(message.contains("HTTP 403"))
+        assertTrue(message.contains("created over a month ago"))
+        assertTrue(message.contains("write access"))
+        assertEquals("GitHub refused the rerun (HTTP 500). Refresh and try again.", rerunFailureMessage(500, "not json"))
+    }
 }

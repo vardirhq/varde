@@ -116,15 +116,16 @@ private fun MarkdownInline(node: Node, style: TextStyle, bold: Boolean = false) 
 @Composable
 internal fun WorkspaceCode(code: String, languageHint: String) {
     val language = remember(languageHint) { CodeHighlight.language(languageHint) }
-    val highlighted = remember(code, language) {
+    val palette = VardeTheme.colors
+    val highlighted = remember(code, language, palette) {
         buildAnnotatedString {
             append(code)
             CodeHighlight.tokens(code, language).forEach { token ->
                 val color = when (token.kind) {
-                    CodeHighlight.Kind.KEYWORD -> Color(0xFFFFBF69)
-                    CodeHighlight.Kind.STRING -> Color(0xFFA5D6A7)
-                    CodeHighlight.Kind.COMMENT -> Color(0xFFABB8C3)
-                    CodeHighlight.Kind.NUMBER -> Color(0xFFB8C9FF)
+                    CodeHighlight.Kind.KEYWORD -> palette.codeKeyword
+                    CodeHighlight.Kind.STRING -> palette.codeString
+                    CodeHighlight.Kind.COMMENT -> palette.codeComment
+                    CodeHighlight.Kind.NUMBER -> palette.codeNumber
                 }
                 addStyle(SpanStyle(color = color), token.start, token.end)
             }

@@ -19,7 +19,7 @@ internal fun validWorkLink(value: String): Boolean {
 }
 
 @Composable
-internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
+internal fun ProductWork(portfolio: PortfolioStore, github: GitHubApi, product: Product, repos: List<Repo>) {
     var editing by remember { mutableStateOf<WorkItem?>(null) }
     var deleting by remember { mutableStateOf<WorkItem?>(null) }
     var creatingIssue by remember { mutableStateOf<WorkItem?>(null) }
@@ -28,12 +28,12 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
     fun update(item: WorkItem): Boolean {
         val items = if (product.work.any { it.id == item.id }) product.work.map { if (it.id == item.id) item else it }
             else product.work + item
-        return vm.saveProduct(product.copy(work = items))
+        return portfolio.save(product.copy(work = items))
     }
     creatingIssue?.let { item ->
-        ProductIssueDialog(vm, item, repos, onClose = { creatingIssue = null },
+        ProductIssueDialog(github, item, repos, onClose = { creatingIssue = null },
             onUncertain = { uncertainIssues = uncertainIssues + item.id }, onCreated = { url ->
-            vm.saveProduct(product.copy(work = product.work.map { if (it.id == item.id) it.copy(url = url, kind = "Task") else it }))
+            portfolio.save(product.copy(work = product.work.map { if (it.id == item.id) it.copy(url = url, kind = "Task") else it }))
         })
     }
     editing?.let { item ->
@@ -42,12 +42,12 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
     deleting?.let { item ->
         AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Delete work item?") },
             text = { Text(item.title) },
-            confirmButton = { TextButton(onClick = { vm.saveProduct(product.copy(work = product.work.filterNot { it.id == item.id })); deleting = null }) { Text("Delete") } },
+            confirmButton = { TextButton(onClick = { portfolio.save(product.copy(work = product.work.filterNot { it.id == item.id })); deleting = null }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } })
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Work & ideas", style = MaterialTheme.typography.titleLarge)
-        vm.portfolioError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        SectionHeader("Work & ideas")
+        portfolio.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Text("Local items can link to a GitHub issue or pull request.", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { editing = WorkItem(UUID.randomUUID().toString(), "") }, modifier = Modifier.fillMaxWidth()) {
@@ -56,8 +56,8 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
         if (product.work.isEmpty()) Text("Nothing added yet.", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         product.work.forEachIndexed { index, item ->
-            OutlinedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            VardeCard(contentPadding = PaddingValues(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth()) {
                         Checkbox(item.done, { update(item.copy(done = it)) })
                         Column(Modifier.weight(1f).padding(top = 8.dp)) {
@@ -77,12 +77,12 @@ internal fun ProductWork(vm: Workspace, product: Product, repos: List<Repo>) {
                         TextButton(onClick = {
                             val items = product.work.toMutableList()
                             java.util.Collections.swap(items, index, index - 1)
-                            vm.saveProduct(product.copy(work = items))
+                            portfolio.save(product.copy(work = items))
                         }, enabled = index > 0) { Text("↑") }
                         TextButton(onClick = {
                             val items = product.work.toMutableList()
                             java.util.Collections.swap(items, index, index + 1)
-                            vm.saveProduct(product.copy(work = items))
+                            portfolio.save(product.copy(work = items))
                         }, enabled = index < product.work.lastIndex) { Text("↓") }
                         TextButton(onClick = { editing = item }) { Text("Edit") }
                         TextButton(onClick = { deleting = item }) { Text("Delete") }

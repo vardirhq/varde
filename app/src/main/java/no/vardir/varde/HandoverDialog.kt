@@ -16,7 +16,7 @@ import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 
 @Composable
-internal fun HandoverDialog(vm: Workspace, repo: Repo, page: String, response: CachedResponse?, onClose: () -> Unit) {
+internal fun HandoverDialog(github: GitHubApi, repo: Repo, page: String, response: CachedResponse?, onClose: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     var request by remember { mutableStateOf("") }
@@ -60,7 +60,7 @@ internal fun HandoverDialog(vm: Workspace, repo: Repo, page: String, response: C
         val missing = mutableListOf<String>()
         for (name in listOf("AGENTS.md", "CLAUDE.md")) {
             try {
-                val result = vm.workspaceLoad(repoApi(repo) + "/contents/" + name)
+                val result = github.load(repoApi(repo) + "/contents/" + name)
                 val json = JSONObject(result.body)
                 val encoded = jsonText(json, "content")
                 if (encoded.isBlank()) throw IllegalStateException("No file content")
@@ -74,11 +74,11 @@ internal fun HandoverDialog(vm: Workspace, repo: Repo, page: String, response: C
                 val pr = JSONObject(response.body)
                 val number = page.substringAfter(':')
                 val sha = pr.optJSONObject("head")?.optString("sha").orEmpty()
-                val filesResult = vm.workspaceLoad(repoApi(repo) + "/pulls/" + number + "/files?per_page=100")
+                val filesResult = github.load(repoApi(repo) + "/pulls/" + number + "/files?per_page=100")
                 val files = org.json.JSONArray(filesResult.body)
                 val names = (0 until files.length()).mapNotNull { files.optJSONObject(it) }
                     .joinToString("\n") { jsonText(it, "filename") + " · " + jsonText(it, "status") }
-                val checksResult = if (sha.isNotBlank()) vm.workspaceLoad(repoApi(repo) + "/commits/" + pathPart(sha) + "/check-runs?per_page=100") else null
+                val checksResult = if (sha.isNotBlank()) github.load(repoApi(repo) + "/commits/" + pathPart(sha) + "/check-runs?per_page=100") else null
                 val checks = checksResult?.let { JSONObject(it.body).optJSONArray("check_runs") }
                 val summaries = (0 until (checks?.length() ?: 0)).mapNotNull { checks?.optJSONObject(it) }
                     .joinToString("\n") { jsonText(it, "name") + " · " + jsonText(it, "status") + " · " + jsonText(it, "conclusion") }

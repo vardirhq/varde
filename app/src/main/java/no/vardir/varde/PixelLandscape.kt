@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -58,6 +59,7 @@ internal fun LandscapeBanner(seed: Long, night: Boolean, modifier: Modifier = Mo
     Box(modifier) {
         Image(bitmap, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop,
             filterQuality = FilterQuality.None)
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color(0x990C111A), Color(0x440C111A), Color(0xFF101720)))))
+        val fade = MaterialTheme.colorScheme.background
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color(0x990C111A), Color(0x440C111A), fade))))
     }
 }

@@ -11,7 +11,7 @@ internal suspend fun loadAttentionFeed(repos: List<Repo>, user: String, load: su
     val items = mutableListOf<AttentionItem>()
     var incomplete = false
     val byName = repos.associateBy { (it.owner + "/" + it.name).lowercase(java.util.Locale.ROOT) }
-    suspend fun search(query: String, kind: String) {
+    suspend fun search(query: String, kind: AttentionKind) {
         try {
             val result = JSONObject(load("search/issues?q=" + pathPart(query) + "&per_page=100"))
             if (result.optInt("total_count") > 100 || result.optBoolean("incomplete_results")) incomplete = true
@@ -20,16 +20,17 @@ internal suspend fun loadAttentionFeed(repos: List<Repo>, user: String, load: su
                 val o = a.getJSONObject(i)
                 val ownerAndRepo = jsonText(o, "repository_url").substringAfter("/repos/").lowercase(java.util.Locale.ROOT)
                 val repo = byName[ownerAndRepo] ?: continue
-                items.add(AttentionItem(jsonText(o, "title"), "${repo.owner}/${repo.name}", kind, jsonText(o, "html_url"), repo.id))
+                items.add(AttentionItem(jsonText(o, "title"), "${repo.owner}/${repo.name}", kind, jsonText(o, "html_url"), repo.id,
+                    jsonText(o, "updated_at")))
             }
         } catch (e: CancellationException) { throw e } catch (_: Exception) { incomplete = true }
     }
     // Global review search is filtered against the user's included repositories locally.
-    search("is:open is:pr review-requested:$user", "Review requested")
+    search("is:open is:pr review-requested:$user", AttentionKind.ReviewRequested)
     // Search accepts multiple repo qualifiers. Small batches keep URLs and result sets bounded.
     for (batch in repos.chunked(8)) {
         val qualifiers = batch.joinToString(" ") { "repo:${it.owner}/${it.name}" }
-        search("$qualifiers is:open is:pr status:failure", "PR checks failing")
+        search("$qualifiers is:open is:pr status:failure", AttentionKind.ChecksFailing)
     }
     for (repo in repos) {
         try {
@@ -43,7 +44,7 @@ internal suspend fun loadAttentionFeed(repos: List<Repo>, user: String, load: su
                 if (!seen.add(id)) continue
                 if (run.optString("conclusion") == "failure") {
                     items.add(AttentionItem(jsonText(run, "name", "Workflow"), "${repo.owner}/${repo.name}",
-                        "Latest workflow run failed", jsonText(run, "html_url"), repo.id))
+                        AttentionKind.WorkflowFailed, jsonText(run, "html_url"), repo.id, jsonText(run, "updated_at")))
                 }
             }
         } catch (e: CancellationException) { throw e } catch (_: Exception) { incomplete = true }

@@ -37,7 +37,7 @@ internal suspend fun loadProductEvidence(
                     events.add(ProductEvent(repo.id, repo.name, jsonText(item, "title"), "PR",
                         jsonText(item, "updated_at"), "pull:${item.optInt("number")}"))
                     pulls.add(AttentionItem(jsonText(item, "title"), "${repo.owner}/${repo.name}",
-                        "Pull request", jsonText(item, "html_url"), repo.id))
+                        AttentionKind.OpenPullRequest, jsonText(item, "html_url"), repo.id, jsonText(item, "updated_at")))
                 }
             } catch (_: Exception) { notes.add("${repo.name}: pull requests could not be read.") }
         }

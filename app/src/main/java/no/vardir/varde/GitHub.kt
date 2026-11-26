@@ -101,7 +101,7 @@ class GitHub(private val clientId: String) {
             .post(RequestBody.create(null, ByteArray(0))).build()
         http.newCall(request).execute().use { response ->
             if (response.code == 401) throw Unauthorized()
-            check(response.isSuccessful) { "GitHub could not rerun failed jobs (HTTP ${response.code}). Check Actions permissions and run status." }
+            check(response.isSuccessful) { rerunFailureMessage(response.code, response.body?.string().orEmpty()) }
         }
     }
     internal suspend fun jobLog(path: String, token: String): String = withContext(Dispatchers.IO) {
@@ -128,8 +128,9 @@ class GitHub(private val clientId: String) {
                 title = item.getString("title"),
                 repository = item.getJSONObject("repository").getString("full_name"),
                 repositoryId = item.getJSONObject("repository").getLong("id"),
-                kind = if (item.has("pull_request")) "Pull request" else "Issue",
-                url = item.getString("html_url")
+                kind = if (item.has("pull_request")) AttentionKind.AssignedPullRequest else AttentionKind.AssignedIssue,
+                url = item.getString("html_url"),
+                updatedAt = item.optString("updated_at")
             )
         }
     }

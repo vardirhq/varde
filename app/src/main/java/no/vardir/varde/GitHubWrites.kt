@@ -62,3 +62,17 @@ internal fun buildCreateIssueRequest(repo: Repo, title: String, text: String, to
         .header("X-GitHub-Api-Version", "2022-11-28")
         .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
 }
+
+/** Explains a failed rerun, including GitHub's own reason (for example, runs older than a month can't be rerun). */
+internal fun rerunFailureMessage(code: Int, body: String): String {
+    val reason = runCatching { org.json.JSONObject(body).optString("message") }.getOrDefault("")
+        .replace(Regex("\\s+"), " ").trim().take(200)
+    val hint = when (code) {
+        403 -> "If you signed in without write access, sign out and reconnect with it."
+        404 -> "Check that you still have access to this repository."
+        409 -> "The run may already be running again. Refresh to check."
+        else -> "Refresh and try again."
+    }
+    return listOf("GitHub refused the rerun (HTTP $code).", reason.takeIf { it.isNotBlank() }?.let { "GitHub says: \"$it\"" }, hint)
+        .filterNotNull().joinToString(" ")
+}

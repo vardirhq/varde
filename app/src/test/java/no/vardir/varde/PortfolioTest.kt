@@ -21,7 +21,7 @@ class PortfolioTest {
         assertEquals(listOf(1L, 2L), moveRepository(listOf(1, 2), 0, -1))
     }
     @Test fun attentionExcludesHiddenRepositories() {
-        val items = listOf(AttentionItem("Failure", "vardir/engine", "Latest workflow run failed", "url", 1))
+        val items = listOf(AttentionItem("Failure", "vardir/engine", AttentionKind.WorkflowFailed, "url", 1))
         assertEquals(1, productAttention(Product("p", "X", repositoryIds = listOf(1)), items, emptySet()).size)
         assertTrue(productAttention(Product("p", "X", repositoryIds = listOf(1)), items, setOf(1)).isEmpty())
     }
