@@ -26,7 +26,7 @@ import java.util.Date
 private data class WorkspaceLink(val title: String, val subtitle: String, val route: String, val status: StatusLabel? = null)
 
 @Composable
-internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTracker, assistant: OnDeviceAssistant, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
+internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTracker, assistant: OnDeviceAssistant, dismissed: DismissedItems, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
     var payload by remember { mutableStateOf<CachedResponse?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -216,6 +216,10 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                             Notice(if (kind == NoticeKind.Error) "Rerun not started" else "Rerun requested", message, kind)
                         } }
                         item { OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare agent handover") } }
+                        page.substringAfter(':').toLongOrNull()?.let { runId ->
+                            item { SectionHeader("Not going to fix it?") }
+                            item { RunActions(github, dismissed, repo, runId, onDeleted = onBack) }
+                        }
                     }
                 }
             }

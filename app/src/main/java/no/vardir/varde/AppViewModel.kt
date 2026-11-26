@@ -41,6 +41,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
     internal val portfolio = PortfolioStore(application.applicationContext)
     internal val inbox = AttentionInbox(viewModelScope)
     internal val delegations = DelegationTracker(application.applicationContext)
+    internal val dismissed = DismissedItems(application.applicationContext)
     private var delegationJob: Job? = null
     internal val notifications = NotificationPrefs(application.applicationContext)
     /** Optional on-device assistance; ML Kit is only touched once it has been switched on. */
@@ -55,6 +56,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
                 user = previous
                 portfolio.open(previous)
                 delegations.open(previous)
+                dismissed.open(previous)
                 repositories.open(previous, fromSnapshot = true)
             }
             refresh()
@@ -101,6 +103,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
         user = client.login(access)
         portfolio.open(user)
         delegations.open(user)
+        dismissed.open(user)
         repositories.open(user)
         repositories.replace(user, client.repositories(access))
         inbox.loadAssigned { client.assignedWork(access) }
@@ -129,7 +132,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
 
     private fun reset() {
         BackgroundChecks.cancel(appContext); notifications.forgetAccounts(); ConditionalCache.clear(appContext)
-        delegationJob?.cancel(); inbox.clear(); delegations.clear(); repositories.clear(); portfolio.clear()
+        delegationJob?.cancel(); inbox.clear(); delegations.clear(); dismissed.clear(); repositories.clear(); portfolio.clear()
         store.clear(); token = null; signedIn = false; user = ""
     }
 

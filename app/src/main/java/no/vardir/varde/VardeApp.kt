@@ -74,7 +74,7 @@ private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Mod
     }
     NavHost(nav, startDestination = InboxRoute, modifier = modifier) {
         composable<InboxRoute> {
-            InboxScreen(vm, vm.user, vm.inbox, repositories, portfolio, vm.delegations, onDelegationsChanged = vm::refreshDelegations,
+            InboxScreen(vm, vm.user, vm.inbox, repositories, portfolio, vm.delegations, vm.dismissed, onDelegationsChanged = vm::refreshDelegations,
                 onOpenItem = openAttention, onOpenPull = { repoId, number -> nav.navigate(RepositoryRoute(repoId, "pull:$number")) }, onOpenProduct = { nav.navigate(ProductRoute(it.id)) },
                 onShowProducts = { nav.switchTab(ProductsRoute) })
         }
@@ -113,7 +113,7 @@ private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Mod
             if (repo == null) {
                 if (vm.busy) CenteredLoader("Loading repositories…")
                 else MissingScreen("Repository unavailable", "Refresh GitHub data or check that you still have access.") { nav.popBackStack() }
-            } else RepositoryWorkspace(vm.github, vm.delegations, vm.assistant, repo, route.page,
+            } else RepositoryWorkspace(vm.github, vm.delegations, vm.assistant, vm.dismissed, repo, route.page,
                 onNavigate = { page -> nav.navigate(RepositoryRoute(repo.id, page)) },
                 onBack = { nav.popBackStack() })
         }
