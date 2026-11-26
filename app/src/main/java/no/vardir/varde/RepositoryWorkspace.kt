@@ -183,6 +183,7 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                             if (parsed.htmlUrl.startsWith("https://github.com/")) TextButton(onClick = { runCatching { uri.openUri(parsed.htmlUrl) } }) { Text("Open on GitHub") }
                         }
                     }
+                    is WorkspacePage.Builds -> item(key = "builds") { BuildsPage(github, repo, response.body, response.cached, page.sha) }
                     WorkspacePage.Releases -> item(key = "releases") { ReleasesPage(github, repo, response.body, response.cached, onChanged = ::done) }
                     is WorkspacePage.Pull -> {
                         val pr = runCatching { parsePullRequest(response.body) }.getOrNull()
@@ -357,6 +358,7 @@ private fun workspaceLinks(page: WorkspacePage, body: String): List<WorkspaceLin
             WorkspaceLink("Pull requests", "Review changes and checks", WorkspacePage.Pulls.route),
             WorkspaceLink("Workflows", "Runs, jobs and logs", WorkspacePage.Runs.route),
             WorkspaceLink("Releases", "What's unreleased, and drafting the next release", WorkspacePage.Releases.route),
+            WorkspaceLink("Install a build", "Download and install an APK from a release or a workflow run", WorkspacePage.Builds().route),
             WorkspaceLink("Docs", "README, guides and other markdown documents", WorkspacePage.Docs.route),
             WorkspaceLink("Files", "Browse repository files", WorkspacePage.Files("").route),
         )

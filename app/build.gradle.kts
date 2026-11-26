@@ -15,8 +15,12 @@ android {
         targetSdk = 35
         // CI builds count up, so each APK installs as an update of the previous one.
         val build = providers.environmentVariable("GITHUB_RUN_NUMBER").orElse("1").get().toInt()
-        versionCode = build
-        versionName = "0.1.$build"
+        // Release builds pass their own, always-increasing code; run numbers restart in each workflow.
+        versionCode = providers.environmentVariable("VARDE_VERSION_CODE").orNull?.toInt() ?: build
+        // A tagged release (v1.2.3) is named after its tag; other builds after their CI run.
+        val tag = providers.environmentVariable("GITHUB_REF_NAME").orElse("").get()
+        val tagged = providers.environmentVariable("GITHUB_REF_TYPE").orElse("").get() == "tag" && tag.matches(Regex("v?\\d+\\.\\d+\\.\\d+.*"))
+        versionName = if (tagged) tag.removePrefix("v") else "0.1.$build"
         val clientId = providers.environmentVariable("GH_CLIENT_ID").orElse("").get()
         require(clientId.matches(Regex("[A-Za-z0-9_]*"))) { "Invalid GitHub client ID" }
         buildConfigField("String", "GH_CLIENT_ID", "\"$clientId\"")
@@ -39,6 +43,23 @@ android {
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
+        }
+        // The release key never lives in the repository. CI decodes it from secrets into a temporary file;
+        // without it, release builds are left unsigned and can't be installed.
+        val releaseStore = providers.environmentVariable("VARDE_RELEASE_KEYSTORE").orNull
+        if (releaseStore != null) create("release") {
+            storeFile = file(releaseStore)
+            storePassword = providers.environmentVariable("VARDE_RELEASE_STORE_PASSWORD").get()
+            keyAlias = providers.environmentVariable("VARDE_RELEASE_KEY_ALIAS").get()
+            keyPassword = providers.environmentVariable("VARDE_RELEASE_KEY_PASSWORD").get()
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     tasks.matching { it.name.startsWith("validateSigning") }.configureEach { dependsOn(prepareDebugKeystore) }

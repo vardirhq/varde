@@ -12,6 +12,8 @@ internal interface GitHubApi {
     suspend fun rerunFailedJobs(repo: Repo, runId: Long)
     /** Raw bytes of a repository file, never cached on disk. Used for images and large files. */
     suspend fun rawFile(repo: Repo, path: String, maxBytes: Long): ByteArray
+    /** Downloads a GitHub API resource (an artifact zip, a release asset) to [dest]; never cached. */
+    suspend fun download(path: String, accept: String, dest: java.io.File, maxBytes: Long, onProgress: (Long, Long) -> Unit)
     suspend fun deleteRun(repo: Repo, runId: Long)
     suspend fun disableWorkflow(repo: Repo, workflowId: Long)
     /** Returns the new issue's URL. */
@@ -50,6 +52,8 @@ internal class SessionGitHub(
     override suspend fun rawFile(repo: Repo, path: String, maxBytes: Long): ByteArray = guarded {
         client.rawFile(repoApi(repo) + "/contents/" + path.split('/').joinToString("/") { pathPart(it) }, token("load files"), maxBytes)
     }
+    override suspend fun download(path: String, accept: String, dest: java.io.File, maxBytes: Long, onProgress: (Long, Long) -> Unit) =
+        guarded { client.download(path, token("download builds"), accept, dest, maxBytes, onProgress) }
     override suspend fun deleteRun(repo: Repo, runId: Long) = guarded { client.deleteRun(repo, runId, token("delete runs")) }
     override suspend fun disableWorkflow(repo: Repo, workflowId: Long) = guarded { client.disableWorkflow(repo, workflowId, token("disable workflows")) }
     override suspend fun createIssue(repo: Repo, title: String, body: String): String =
