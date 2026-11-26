@@ -110,7 +110,7 @@ private fun VardeNavHost(vm: AppViewModel, nav: NavHostController, modifier: Mod
             val route = backStack.toRoute<RepositoryRoute>()
             val repo = repositories.find(route.repoId)
             if (repo == null) {
-                if (vm.busy) Box(Modifier.fillMaxSize()) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                if (vm.busy) CenteredLoader("Loading repositories…")
                 else MissingScreen("Repository unavailable", "Refresh GitHub data or check that you still have access.") { nav.popBackStack() }
             } else RepositoryWorkspace(vm.github, vm.delegations, repo, route.page,
                 onNavigate = { page -> nav.navigate(RepositoryRoute(repo.id, page)) },

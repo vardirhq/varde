@@ -1,0 +1,14 @@
+<!-- The Varde mark cropped to its bounds, for in-app use and notifications. Same geometry as ic_varde_mark.xml. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="72" android:viewportHeight="72">
+    <group android:translateX="-18" android:translateY="-15">
+        <path android:fillColor="#E8E1D9" android:pathData="M29,82.8 L30.3,71.8 L33,69.6 L47,72.4 L49.7,74.6 L51,82.8 L48.8,85 L31.2,85 Z" />
+        <path android:fillColor="#E8E1D9" android:pathData="M55,82.8 L56.3,73.4 L59,71.2 L75,68.8 L77.7,71 L79,82.8 L76.8,85 L57.2,85 Z" />
+        <path android:fillColor="#E8E1D9" android:pathData="M33,64.8 L34.3,59.4 L37,57.2 L56,54.8 L58.7,57 L60,64.8 L57.8,67 L35.2,67 Z" />
+        <path android:fillColor="#E8E1D9" android:pathData="M64,64.8 L65.3,58.2 L68,56 L72,58 L74.7,60.2 L76,64.8 L73.8,67 L66.2,67 Z" />
+        <path android:fillColor="#E8E1D9" android:pathData="M36,49.8 L37.3,45 L40,42.8 L68,45.2 L70.7,47.4 L72,49.8 L69.8,52 L38.2,52 Z" />
+        <path android:fillColor="#E8E1D9" android:pathData="M42,37.8 L43.3,36.2 L46,34 L60,32 L62.7,34.2 L64,37.8 L61.8,40 L44.2,40 Z" />
+        <path android:fillColor="#F2A43B" android:pathData="M53,17 L58.5,23 L53,29 L47.5,23 Z" />
+    </group>
+</vector>

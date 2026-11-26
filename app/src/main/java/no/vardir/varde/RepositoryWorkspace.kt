@@ -29,7 +29,7 @@ private data class WorkspaceLink(val title: String, val subtitle: String, val ro
 internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTracker, repo: Repo, page: String, onNavigate: (String) -> Unit, onBack: () -> Unit) {
     var payload by remember { mutableStateOf<CachedResponse?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(true) }
     var generation by remember { mutableIntStateOf(0) }
     var showHandover by remember { mutableStateOf(false) }
     var confirmRerun by remember { mutableStateOf(false) }
@@ -132,7 +132,8 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh")
             }
         })
-        LazyColumn(
+        if (loading && payload == null && error == null) CenteredLoader(loadingLabel(page))
+        else LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -140,7 +141,6 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
             if (page.startsWith("log:") || page.startsWith("changes:")) item {
                 OutlinedButton(onClick = { showHandover = true }, modifier = Modifier.fillMaxWidth()) { Text("Prepare agent handover") }
             }
-            if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             writeMessage?.let { message -> item { Notice("GitHub action", message, NoticeKind.Success) } }
             error?.let { message -> item {
                 Notice("Couldn't load this view", message, NoticeKind.Error)
@@ -327,4 +327,13 @@ private fun workspaceLinks(page: String, body: String): List<WorkspaceLink> {
             else -> null
         }
     }
+}
+
+private fun loadingLabel(page: String): String = when {
+    page == "overview" -> "Loading repository…"
+    page.startsWith("pull:") -> "Loading pull request #${page.substringAfter(':')}…"
+    page.startsWith("issue:") -> "Loading issue #${page.substringAfter(':')}…"
+    page.startsWith("log:") -> "Loading job log…"
+    page.startsWith("files:") -> "Loading files…"
+    else -> "Loading ${workspacePageTitle(page).lowercase()}…"
 }

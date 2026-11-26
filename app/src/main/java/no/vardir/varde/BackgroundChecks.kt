@@ -124,9 +124,9 @@ internal object VardeNotifications {
         if (alerts.isEmpty() || !canPost(context)) return
         ensureChannels(context)
         val manager = NotificationManagerCompat.from(context)
-        fun base(channel: String) = NotificationCompat.Builder(context, channel).setSmallIcon(R.drawable.ic_varde_mark)
+        fun base(channel: String) = NotificationCompat.Builder(context, channel).setSmallIcon(R.drawable.ic_varde_glyph)
             .setAutoCancel(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setPublicVersion(NotificationCompat.Builder(context, channel).setSmallIcon(R.drawable.ic_varde_mark).setContentTitle("Varde").setContentText("New activity").build())
+            .setPublicVersion(NotificationCompat.Builder(context, channel).setSmallIcon(R.drawable.ic_varde_glyph).setContentTitle("Varde").setContentText("New activity").build())
         try {
             if (alerts.size > 3) {
                 val style = NotificationCompat.InboxStyle()
