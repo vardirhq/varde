@@ -13,8 +13,10 @@ android {
         applicationId = "no.vardir.varde"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI builds count up, so each APK installs as an update of the previous one.
+        val build = providers.environmentVariable("GITHUB_RUN_NUMBER").orElse("1").get().toInt()
+        versionCode = build
+        versionName = "0.1.$build"
         val clientId = providers.environmentVariable("GH_CLIENT_ID").orElse("").get()
         require(clientId.matches(Regex("[A-Za-z0-9_]*"))) { "Invalid GitHub client ID" }
         buildConfigField("String", "GH_CLIENT_ID", "\"$clientId\"")
@@ -61,5 +63,6 @@ dependencies {
     implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.22.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }

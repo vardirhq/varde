@@ -5,6 +5,8 @@ internal enum class AlertCategory(val label: String, val detail: String) {
     Failures("Failing checks and workflows", "A pull request's checks or a workflow's latest run failed."),
     Reviews("Review requests", "Someone asked for your review."),
     Delegations("Delegated work", "An agent's pull request is ready for review or its checks fail."),
+    YourPulls("Reviews of your pull requests", "Someone approved your pull request or asked for changes."),
+    Mentions("Mentions", "Someone mentioned you in an issue or pull request."),
 }
 
 /**
@@ -20,6 +22,8 @@ internal fun attentionAlerts(items: List<AttentionItem>): List<Alert> = mergeAtt
     val category = when (item.kind) {
         AttentionKind.ChecksFailing, AttentionKind.WorkflowFailed -> AlertCategory.Failures
         AttentionKind.ReviewRequested -> AlertCategory.Reviews
+        AttentionKind.ChangesRequested, AttentionKind.Approved -> AlertCategory.YourPulls
+        AttentionKind.Mentioned -> AlertCategory.Mentions
         else -> return@mapNotNull null
     }
     Alert("${item.kind}:${item.url}", category, "${item.kind.label} · ${item.repository}", item.title, item.repositoryId, attentionRoute(item))
@@ -53,4 +57,4 @@ internal fun decideAlerts(
 }
 
 /** Only pages the app itself links to may be opened from a notification. */
-internal fun isNotificationPage(page: String): Boolean = Regex("(pull|run):[0-9]{1,12}").matches(page)
+internal fun isNotificationPage(page: String): Boolean = Regex("(pull|run|issue):[0-9]{1,12}").matches(page)

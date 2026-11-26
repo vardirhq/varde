@@ -16,6 +16,8 @@ internal class AttentionInbox(private val scope: CoroutineScope) {
     var feedItems by mutableStateOf(emptyList<AttentionItem>()); private set
     var feedLoading by mutableStateOf(false); private set
     var feedIncomplete by mutableStateOf(false); private set
+    /** A specific reason the feed is incomplete, such as the rate limit. */
+    var feedProblem by mutableStateOf<String?>(null); private set
     private var feedJob: Job? = null
     private var generation = 0
 
@@ -26,34 +28,38 @@ internal class AttentionInbox(private val scope: CoroutineScope) {
     fun mayBeIncomplete(offline: Boolean): Boolean = feedLoading || feedIncomplete || !assignedLoaded || offline
 
     /** Loads assigned work. Session expiry is rethrown so the caller can sign out; other failures become [assignedError]. */
-    suspend fun loadAssigned(fetch: suspend () -> List<AttentionItem>) {
+    suspend fun loadAssigned(fetch: suspend () -> Pair<List<AttentionItem>, Boolean>) {
         try {
-            assigned = fetch()
+            val (items, truncated) = fetch()
+            assigned = items
             assignedLoaded = true
-            assignedError = null
+            assignedError = if (truncated) "You have more assigned work than Varde loads at once; the most recently updated items are shown." else null
         } catch (e: CancellationException) { throw e }
         catch (e: Unauthorized) { throw e }
-        catch (_: Exception) {
+        catch (e: Exception) {
             assigned = emptyList()
             assignedLoaded = false
-            assignedError = "Check your connection and refresh. Assigned work may require additional GitHub permissions."
+            assignedError = if (e is RateLimited) e.message else "Check your connection and refresh. Assigned work may require additional GitHub permissions."
         }
     }
 
     /** Restarts the feed for [repos]; a newer start cancels an older one. */
-    fun startFeed(repos: List<Repo>, user: String, get: suspend (String) -> String): Job? {
+    fun startFeed(repos: List<Repo>, user: String, onUnauthorized: () -> Unit = {}, get: suspend (String) -> String): Job? {
         feedJob?.cancel()
         val current = ++generation
         if (user.isBlank()) return null
         feedLoading = true
         feedItems = emptyList()
         feedIncomplete = false
+        feedProblem = null
         return scope.launch {
             try {
                 val result = loadAttentionFeed(repos, user, get)
                 feedItems = result.items
                 feedIncomplete = result.incomplete
+                feedProblem = result.problem
             } catch (e: CancellationException) { throw e }
+            catch (_: Unauthorized) { feedIncomplete = true; onUnauthorized() }
             catch (_: Exception) { feedIncomplete = true }
             finally { if (current == generation) feedLoading = false }
         }.also { feedJob = it }
@@ -61,7 +67,7 @@ internal class AttentionInbox(private val scope: CoroutineScope) {
 
     fun clear() {
         generation++; feedJob?.cancel()
-        feedItems = emptyList(); feedIncomplete = false; feedLoading = false
+        feedItems = emptyList(); feedIncomplete = false; feedProblem = null; feedLoading = false
         assigned = emptyList(); assignedLoaded = false; assignedError = null
     }
 }

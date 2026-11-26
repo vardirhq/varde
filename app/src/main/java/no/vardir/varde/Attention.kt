@@ -7,7 +7,10 @@ import java.time.Instant
 enum class AttentionKind(val label: String) {
     ChecksFailing("Checks failing"),
     WorkflowFailed("Workflow failed"),
+    ChangesRequested("Changes requested"),
     ReviewRequested("Review requested"),
+    Approved("Approved"),
+    Mentioned("Mentioned"),
     AssignedPullRequest("Assigned pull request"),
     AssignedIssue("Assigned issue"),
     OpenPullRequest("Open pull request"),
@@ -27,11 +30,15 @@ data class AttentionItem(
     val alsoKinds: Set<AttentionKind> = emptySet(),
 )
 
-internal enum class InboxSection(val title: String) { Failing("Failing"), Review("Waiting for your review"), Assigned("Assigned to you") }
+internal enum class InboxSection(val title: String) {
+    Failing("Failing"), Review("Waiting for your review"), Yours("Your pull requests"), Mentioned("Mentioned"), Assigned("Assigned to you"),
+}
 
 internal fun AttentionItem.section(): InboxSection = when (kind) {
     AttentionKind.ChecksFailing, AttentionKind.WorkflowFailed -> InboxSection.Failing
     AttentionKind.ReviewRequested -> InboxSection.Review
+    AttentionKind.ChangesRequested, AttentionKind.Approved -> InboxSection.Yours
+    AttentionKind.Mentioned -> InboxSection.Mentioned
     AttentionKind.AssignedPullRequest, AttentionKind.AssignedIssue, AttentionKind.OpenPullRequest -> InboxSection.Assigned
 }
 
@@ -76,7 +83,8 @@ internal fun attentionRoute(item: AttentionItem): String? {
     return when (item.kind) {
         AttentionKind.WorkflowFailed -> id.toLongOrNull()?.let { "run:$it" }
         AttentionKind.AssignedIssue -> id.toIntOrNull()?.let { "issue:$it" }
-        AttentionKind.ChecksFailing, AttentionKind.ReviewRequested, AttentionKind.AssignedPullRequest,
-        AttentionKind.OpenPullRequest -> id.toIntOrNull()?.let { "pull:$it" }
+        AttentionKind.Mentioned -> id.toIntOrNull()?.let { if (item.url.contains("/pull/")) "pull:$it" else "issue:$it" }
+        AttentionKind.ChecksFailing, AttentionKind.ReviewRequested, AttentionKind.AssignedPullRequest, AttentionKind.ChangesRequested,
+        AttentionKind.Approved, AttentionKind.OpenPullRequest -> id.toIntOrNull()?.let { "pull:$it" }
     }
 }

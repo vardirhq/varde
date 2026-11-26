@@ -36,7 +36,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
     override var busy by mutableStateOf(false); private set
     override var error by mutableStateOf<String?>(null); private set
 
-    internal val github: GitHubApi = SessionGitHub(application.applicationContext, client) { token?.let { user to it } }
+    internal val github: GitHubApi = SessionGitHub(ResponseCache.workspace(application.applicationContext), client, ::sessionExpired) { token?.let { user to it } }
     internal val repositories = RepositoryState(application.applicationContext, onVisibilityChanged = ::restartFeed)
     internal val portfolio = PortfolioStore(application.applicationContext)
     internal val inbox = AttentionInbox(viewModelScope)
@@ -50,6 +50,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
     override val snapshotTime: Long? get() = repositories.snapshotTime
 
     init {
+        // Older versions kept responses in preferences, where they grew without limit.
+        ResponseCache.removeLegacy(application.applicationContext)
         if (signedIn) {
             val previous = repositories.lastUser()
             if (previous.isNotBlank()) {
@@ -124,14 +126,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Sy
 
     private fun restartFeed() {
         val access = token ?: return
-        inbox.startFeed(repositories.included, user) { client.get(it, access) }
+        val cache = ConditionalCache(ResponseCache.conditional(appContext), client, user, access)
+        inbox.startFeed(repositories.included, user, onUnauthorized = ::sessionExpired) { cache.get(it) }
     }
 
     override fun refresh() = runTask { token?.let { sync(it) } }
     fun cancel() { job?.cancel() }
 
+    /** Any screen's request found the token rejected: sign out once, on the main thread. */
+    private fun sessionExpired() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
+            if (!signedIn) return@launch
+            job?.cancel(); reset(); error = "Session expired. Sign in again."
+        }
+    }
+
     private fun reset() {
-        BackgroundChecks.cancel(appContext); notifications.forgetAccounts(); ConditionalCache.clear(appContext)
+        BackgroundChecks.cancel(appContext); notifications.forgetAccounts(); ResponseCache.clearAll(appContext)
         delegationJob?.cancel(); inbox.clear(); delegations.clear(); dismissed.clear(); repositories.clear(); portfolio.clear()
         store.clear(); token = null; signedIn = false; user = ""
     }

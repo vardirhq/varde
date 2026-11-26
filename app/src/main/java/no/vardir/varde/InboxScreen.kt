@@ -63,13 +63,13 @@ internal fun InboxScreen(
         if (inbox.feedLoading) item { Notice("Checking repositories…", "Looking for review requests, failing checks and workflows.",
             modifier = Modifier.padding(horizontal = ScreenGutter)) }
         if (inbox.feedIncomplete) item { Notice("Some items may be missing",
-            "Permissions, rate limits or result limits kept part of the inbox from loading.", NoticeKind.Warning,
+            inbox.feedProblem ?: "Permissions, rate limits or result limits kept part of the inbox from loading.", NoticeKind.Warning,
             Modifier.padding(horizontal = ScreenGutter)) }
         val emptyState: Pair<String, String>? = when {
             inbox.assignedError != null -> null
             !inbox.assignedLoaded && sync.busy -> "Loading assigned work" to "Checking GitHub for open issues and pull requests assigned to you."
             !inbox.assignedLoaded -> "Assigned work not loaded" to "Refresh to check GitHub for assigned work."
-            count == 0 && delegated.isEmpty() && !inbox.feedLoading && !inbox.feedIncomplete -> "You're all caught up" to "Review requests, failing checks, workflows and assigned work will appear here."
+            count == 0 && delegated.isEmpty() && !inbox.feedLoading && !inbox.feedIncomplete -> "You're all caught up" to "Review requests, failing checks, reviews of your pull requests, mentions and assigned work will appear here."
             else -> null
         }
         inbox.assignedError?.let { item { Notice("Couldn't load assigned work", it, NoticeKind.Error, Modifier.padding(horizontal = ScreenGutter)) } }
@@ -140,7 +140,8 @@ private fun Hero(user: String, count: Int, loading: Boolean) {
 
 private fun AttentionKind.tone(): StatusTone = when (this) {
     AttentionKind.ChecksFailing, AttentionKind.WorkflowFailed -> StatusTone.Failure
-    AttentionKind.ReviewRequested -> StatusTone.Pending
+    AttentionKind.ReviewRequested, AttentionKind.ChangesRequested -> StatusTone.Pending
+    AttentionKind.Approved -> StatusTone.Success
     else -> StatusTone.Neutral
 }
 

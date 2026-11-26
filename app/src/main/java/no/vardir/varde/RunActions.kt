@@ -20,6 +20,26 @@ internal fun parseRunInfo(body: String): RunInfo? = runCatching {
 
 private enum class RunWrite { Delete, Disable }
 
+/** Cancels a run that is still queued or running, after confirmation. Shows nothing once the run has finished. */
+@Composable
+internal fun CancelRun(github: GitHubApi, repo: Repo, runId: Long, onDone: (String) -> Unit) {
+    var info by remember(runId) { mutableStateOf<RunInfo?>(null) }
+    var confirm by remember { mutableStateOf(false) }
+    LaunchedEffect(repo.id, runId) {
+        info = try { parseRunInfo(github.load(repoApi(repo) + "/actions/runs/$runId").body) }
+        catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+    }
+    val run = info ?: return
+    if (run.status == "completed") return
+    OutlinedButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Cancel this run…") }
+    if (confirm) ConfirmedWriteDialog("Cancel run #${run.number}?",
+        "GitHub stops “${run.name}”. Jobs that already finished keep their results; the run is marked cancelled.",
+        "Cancel run", onDismiss = { confirm = false }, onDone = { confirm = false; info = run.copy(status = "completed"); onDone(it) }, destructive = true) {
+        github.send("POST", repoApi(repo) + "/actions/runs/$runId/cancel", "Cancelling the run")
+        "GitHub is cancelling run #${run.number}."
+    }
+}
+
 /**
  * Ways to deal with a failed run that won't be fixed: hide it in Varde, disable its workflow, or delete the run.
  * GitHub writes need explicit confirmation; a completed run can't be cancelled, so delete is the GitHub-side option.

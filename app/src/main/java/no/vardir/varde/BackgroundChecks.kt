@@ -16,7 +16,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.*
 import kotlinx.coroutines.CancellationException
-import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -34,8 +33,11 @@ internal class NotificationPrefs(context: Context) {
     /** Re-reads values the background check may have written. */
     fun reload() {
         enabled = prefs.getBoolean("enabled", false)
-        categories = prefs.getStringSet("categories", null)?.mapNotNull { name -> AlertCategory.entries.firstOrNull { it.name == name } }?.toSet()
-            ?: AlertCategory.entries.toSet()
+        // Older versions stored the enabled set; categories added since then start switched on.
+        val legacy = prefs.getStringSet("categories", null)
+        val off = prefs.getStringSet("disabledCategories", null)
+            ?: legacy?.let { on -> setOf("Failures", "Reviews", "Delegations").filter { it !in on }.toSet() }.orEmpty()
+        categories = AlertCategory.entries.filter { it.name !in off }.toSet()
         lastCheck = prefs.getLong("lastCheck", 0)
         lastResult = prefs.getString("lastResult", "").orEmpty()
     }
@@ -43,7 +45,7 @@ internal class NotificationPrefs(context: Context) {
     fun updateEnabled(value: Boolean) { enabled = value; prefs.edit().putBoolean("enabled", value).apply() }
     fun setCategory(category: AlertCategory, on: Boolean) {
         categories = if (on) categories + category else categories - category
-        prefs.edit().putStringSet("categories", categories.map { it.name }.toSet()).apply()
+        prefs.edit().putStringSet("disabledCategories", (AlertCategory.entries.toSet() - categories).map { it.name }.toSet()).remove("categories").apply()
     }
 
     private fun key(user: String) = user.lowercase(Locale.ROOT)
@@ -66,32 +68,19 @@ internal class NotificationPrefs(context: Context) {
 }
 
 /**
- * ETag cache for background checks. Unchanged data costs no rate limit. Entries not used during a check are dropped
- * by [prune], so the cache only ever holds what the last check needed.
+ * ETag-validated GitHub reads for the inbox feed and background checks. Unchanged data comes back as 304, which costs
+ * no rate limit. Saved bodies live in [ResponseCache.conditional], which is size-capped and cleared on sign-out.
  */
-internal class ConditionalCache(context: Context, private val github: GitHub, user: String, private val token: String) {
-    private val prefs = context.getSharedPreferences("background_cache", Context.MODE_PRIVATE)
+internal class ConditionalCache(private val cache: ResponseCache, private val github: GitHub, user: String, private val token: String) {
     private val prefix = user.lowercase(Locale.ROOT) + ":"
-    private val used = mutableSetOf<String>()
 
     suspend fun get(path: String): String {
         val key = prefix + path
-        used += key
-        val cached = prefs.getString(key, null)?.let { runCatching { JSONObject(it) }.getOrNull() }
-        val response = github.getConditional(path, token, cached?.optString("etag"))
-        if (response.notModified && cached != null) return cached.optString("body")
-        if (response.etag.isNotBlank()) prefs.edit().putString(key, JSONObject().put("etag", response.etag).put("body", response.body).toString()).apply()
+        val cached = cache.get(key)
+        val response = github.getConditional(path, token, cached?.etag)
+        if (response.notModified && cached != null) return cached.body
+        if (response.etag.isNotBlank()) cache.put(key, response.body, etag = response.etag)
         return response.body
-    }
-
-    fun prune() {
-        val editor = prefs.edit()
-        prefs.all.keys.filter { it !in used }.forEach { editor.remove(it) }
-        editor.apply()
-    }
-
-    companion object {
-        fun clear(context: Context) { context.getSharedPreferences("background_cache", Context.MODE_PRIVATE).edit().clear().apply() }
     }
 }
 
@@ -171,22 +160,22 @@ internal class InboxCheckWorker(context: Context, params: WorkerParameters) : Co
         if (user.isBlank()) return Result.success()
         repositories.open(user, fromSnapshot = true)
         val github = GitHub(BuildConfig.GH_CLIENT_ID)
-        val cache = ConditionalCache(context, github, user, token)
+        val cache = ConditionalCache(ResponseCache.conditional(context), github, user, token)
         try {
             val assigned = runCatching { github.assignedWork(token) }
             assigned.exceptionOrNull()?.let { if (it is Unauthorized || it is CancellationException) throw it }
+            val assignedItems = assigned.getOrNull()?.first.orEmpty()
             val feed = loadAttentionFeed(repositories.included, user) { cache.get(it) }
-            val items = includedAttention(feed.items + assigned.getOrDefault(emptyList()), repositories.excluded)
+            val items = includedAttention(feed.items + assignedItems, repositories.excluded)
             val tracker = DelegationTracker(context).also { it.open(user) }
             val checked = tracker.active.take(10).map { d ->
                 checkDelegation(d, repositories.included.firstOrNull { it.id == d.repoId }) { path -> CachedResponse(cache.get(path), false, 0) }
             }
-            val complete = !feed.incomplete && assigned.isSuccess && checked.none { it.second.stage == DelegationStage.Unknown }
+            val complete = !feed.incomplete && assigned.getOrNull()?.second == false && checked.none { it.second.stage == DelegationStage.Unknown }
             val decision = decideAlerts(attentionAlerts(items) + delegationAlerts(checked), settings.seen(user), settings.categories,
                 firstRun = !settings.seeded(user), complete = complete)
             settings.remember(user, decision.seen)
             VardeNotifications.post(context, decision.post)
-            cache.prune()
             settings.recordCheck(when {
                 !VardeNotifications.canPost(context) -> "Checked, but Android is blocking Varde's notifications."
                 complete -> "Checked GitHub."
@@ -194,6 +183,7 @@ internal class InboxCheckWorker(context: Context, params: WorkerParameters) : Co
             })
         } catch (e: CancellationException) { throw e }
         catch (_: Unauthorized) { settings.recordCheck("GitHub session expired. Open Varde to sign in again.") }
+        catch (e: RateLimited) { settings.recordCheck(e.message ?: "GitHub's rate limit is used up.") }
         catch (_: Exception) { settings.recordCheck("Couldn't reach GitHub. Will try again later.") }
         return Result.success()
     }
