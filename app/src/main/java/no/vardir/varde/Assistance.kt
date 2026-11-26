@@ -196,3 +196,52 @@ internal suspend fun suggestLogExcerpt(model: TextModel, log: String): String? {
     val numbers = parseLineNumbers(model.generate(logPrompt(candidates), output), candidates.map { it.index + 1 }.toSet())
     return if (numbers.isEmpty()) null else excerptAround(log, numbers)
 }
+
+// ---- Release summaries ----
+// The model sees only change titles (pull request titles and commit subjects) that people wrote, never code or diffs.
+// Its summary goes above GitHub's factual list, which stays word for word.
+
+/** Change titles from GitHub's generated release notes ("* Title by @someone in https://…"), without authors and links. */
+internal fun changeTitles(notes: String): List<String> = notes.substringBefore("## New Contributors").lines()
+    .mapNotNull { Regex("""^\s*[*-]\s+(.+)$""").find(it)?.groupValues?.get(1) }
+    .map { it.replace(Regex("""\s+by @\S+(\s+in\s+https?://\S+)?\s*$"""), "").replace(Regex("""\s+in\s+https?://\S+\s*$"""), "").trim() }
+    .filter { it.isNotBlank() && !it.startsWith("Full Changelog", ignoreCase = true) }
+
+/** Commit subjects worth summarizing; merge commits only repeat a pull request's branch name. */
+internal fun commitTitles(subjects: List<String>): List<String> =
+    subjects.map { it.trim() }.filter { it.isNotBlank() && !it.startsWith("Merge pull request") && !it.startsWith("Merge branch") }
+
+private const val ReleaseInstructions = """Write the opening of the release notes for version %s.
+Use only the changes listed below. Write two or three plain sentences telling users what is new or fixed, then up to five short bullet points with the most notable changes.
+Do not invent features, numbers, names or links. Do not mention pull request numbers or authors. Reply with only the release notes text.
+
+CHANGES:
+"""
+
+internal fun releasePrompt(version: String, changes: List<String>, budget: Int): String {
+    val header = ReleaseInstructions.format(version.ifBlank { "the next version" })
+    val lines = StringBuilder()
+    for (change in changes) {
+        val line = "- " + change.take(200) + "\n"
+        if (lines.length + line.length > budget) break
+        lines.append(line)
+    }
+    return header + lines
+}
+
+/** Strips preambles, fences and anything with a link. Returns null for empty or runaway output. */
+internal fun cleanReleaseSummary(output: String): String? {
+    var text = output.trim().removePrefix("```markdown").removePrefix("```").removeSuffix("```").trim()
+    text = text.replace(Regex("""(?i)^(here('s| is| are)[^:\n]*:|release notes:|summary:)\s*"""), "")
+    text = text.lines().filterNot { it.contains("http://") || it.contains("https://") }.joinToString("\n")
+        .replace(TrackingIdLike, "").replace(Regex("\n{3,}"), "\n\n").trim()
+    if (text.length < 20 || text.length > 2000) return null
+    return text
+}
+
+internal suspend fun draftReleaseSummary(model: TextModel, version: String, changes: List<String>): String? {
+    if (changes.isEmpty()) return null
+    val output = 350
+    val budget = inputBudget(runCatching { model.tokenLimit() }.getOrDefault(4000), output, ReleaseInstructions.length + 40)
+    return cleanReleaseSummary(model.generate(releasePrompt(version, changes, budget), output))
+}

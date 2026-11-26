@@ -57,7 +57,7 @@ internal fun parseUnreleased(body: String): Unreleased {
 
 /** Releases plus whether the default branch is ready for the next one, based only on what GitHub reports. */
 @Composable
-internal fun ReleasesPage(github: GitHubApi, repo: Repo, body: String, cached: Boolean, onChanged: (String) -> Unit) {
+internal fun ReleasesPage(github: GitHubApi, assistant: OnDeviceAssistant?, repo: Repo, body: String, cached: Boolean, onChanged: (String) -> Unit) {
     val uri = LocalUriHandler.current
     val releases = remember(body) { runCatching { parseReleases(body) }.getOrDefault(emptyList()) }
     val latest = latestRelease(releases)
@@ -75,7 +75,7 @@ internal fun ReleasesPage(github: GitHubApi, repo: Repo, body: String, cached: B
             parseCheckRuns(r.body, r.cached)
         } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
     }
-    if (drafting) DraftReleaseDialog(github, repo, latest, onDismiss = { drafting = false }, onDone = { drafting = false; onChanged(it) })
+    if (drafting) DraftReleaseDialog(github, assistant, repo, latest, unreleased?.commits.orEmpty(), onDismiss = { drafting = false }, onDone = { drafting = false; onChanged(it) })
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         VardeCard {
             Text("Release readiness", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -119,7 +119,7 @@ internal fun ReleasesPage(github: GitHubApi, repo: Repo, body: String, cached: B
  * (here, after a second confirmation, or on GitHub).
  */
 @Composable
-private fun DraftReleaseDialog(github: GitHubApi, repo: Repo, latest: Release?, onDismiss: () -> Unit, onDone: (String) -> Unit) {
+private fun DraftReleaseDialog(github: GitHubApi, assistant: OnDeviceAssistant?, repo: Repo, latest: Release?, commits: List<String>, onDismiss: () -> Unit, onDone: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val branch = repo.defaultBranch.ifBlank { "HEAD" }
     var tag by remember { mutableStateOf(nextVersion(latest?.tag)) }
@@ -131,6 +131,19 @@ private fun DraftReleaseDialog(github: GitHubApi, repo: Repo, latest: Release?, 
     var generating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var unknown by remember { mutableStateOf(false) }
+    var summarizing by remember { mutableStateOf(false) }
+    var beforeSummary by remember { mutableStateOf<String?>(null) }
+    var summaryNote by remember { mutableStateOf<String?>(null) }
+    /** GitHub's generated list of merged pull requests, kept apart from the editable notes. */
+    var githubNotes by remember { mutableStateOf("") }
+    /** Fetches GitHub's generated notes. It's a POST, but GitHub only reads and saves nothing. */
+    suspend fun fetchGitHubNotes(): String {
+        val request = JSONObject().put("tag_name", tag).put("target_commitish", branch)
+        latest?.let { request.put("previous_tag_name", it.tag) }
+        val result = JSONObject(github.send("POST", repoApi(repo) + "/releases/generate-notes", "Generating notes", request))
+        if (name.isBlank()) name = jsonText(result, "name")
+        return jsonText(result, "body").also { githubNotes = it }
+    }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(if (confirming) (if (publish) "Publish ${tag}?" else "Save draft ${tag}?") else "Draft a release") },
@@ -140,21 +153,40 @@ private fun DraftReleaseDialog(github: GitHubApi, repo: Repo, latest: Release?, 
                     OutlinedTextField(tag, { tag = it.trim() }, Modifier.fillMaxWidth(), label = { Text("Tag") }, singleLine = true,
                         supportingText = { Text("Created from $branch when the release is published.") })
                     OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Title (optional)") }, singleLine = true)
-                    OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Release notes") }, minLines = 4)
-                    TextButton(enabled = !generating && tag.isNotBlank(), onClick = {
+                    OutlinedTextField(notes, { notes = it; beforeSummary = null; summaryNote = null }, Modifier.fillMaxWidth(), label = { Text("Release notes") }, minLines = 4)
+                    TextButton(enabled = !generating && !summarizing && tag.isNotBlank(), onClick = {
                         generating = true; error = null
                         scope.launch {
-                            try {
-                                val request = JSONObject().put("tag_name", tag).put("target_commitish", branch)
-                                latest?.let { request.put("previous_tag_name", it.tag) }
-                                // Generating notes only reads; GitHub doesn't save anything.
-                                val result = JSONObject(github.send("POST", repoApi(repo) + "/releases/generate-notes", "Generating notes", request))
-                                notes = jsonText(result, "body"); if (name.isBlank()) name = jsonText(result, "name")
-                            } catch (e: CancellationException) { throw e }
+                            try { notes = fetchGitHubNotes(); beforeSummary = null; summaryNote = null }
+                            catch (e: CancellationException) { throw e }
                             catch (e: Exception) { error = e.message ?: "Couldn't generate notes." }
                             finally { generating = false }
                         }
                     }) { Text(if (generating) "Generating…" else "Fill notes from merged pull requests") }
+                    // Optional: a readable opening above GitHub's factual list, written on this phone from change titles only.
+                    if (assistant?.ready == true && beforeSummary == null) AssistButton("Write a summary from the changes", summarizing,
+                        enabled = !generating && tag.isNotBlank() && (latest != null || commits.isNotEmpty())) {
+                        summarizing = true; error = null
+                        scope.launch {
+                            // Pull request titles describe changes best; commit subjects since the last release are the fallback.
+                            val list = githubNotes.ifBlank { runCatching { fetchGitHubNotes() }.getOrElse { if (it is CancellationException) throw it; "" } }
+                            val changes = changeTitles(list).ifEmpty { commitTitles(commits) }
+                            if (changes.isEmpty()) { summaryNote = "There are no changes since the last release to summarize."; summarizing = false; return@launch }
+                            when (val result = assistant.use { draftReleaseSummary(it, tag, changes) }) {
+                                is AssistResult.Done -> {
+                                    beforeSummary = notes
+                                    // The factual list stays as GitHub wrote it; the summary goes above it.
+                                    val base = notes.ifBlank { list }
+                                    notes = result.value + if (base.isBlank()) "" else "\n\n" + base
+                                    summaryNote = "The summary at the top was written on this phone by on-device AI from ${changes.size} change titles. " +
+                                        "Check it before publishing. The list below it is GitHub's."
+                                }
+                                is AssistResult.Failed -> summaryNote = "Couldn't write a summary; the notes are unchanged. ${result.reason}"
+                            }
+                            summarizing = false
+                        }
+                    }
+                    summaryNote?.let { note -> GeneratedNote(note, beforeSummary?.let { previous -> { notes = previous; beforeSummary = null; summaryNote = null } }) }
                     Row(Modifier.fillMaxWidth().toggleable(publish, role = Role.Checkbox) { publish = it }, verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(publish, onCheckedChange = null)
                         Column(Modifier.padding(start = 12.dp)) {
@@ -173,7 +205,7 @@ private fun DraftReleaseDialog(github: GitHubApi, repo: Repo, latest: Release?, 
             }
         },
         confirmButton = {
-            if (!confirming) TextButton(enabled = tag.isNotBlank() && !generating, onClick = { error = null; confirming = true }) { Text("Review") }
+            if (!confirming) TextButton(enabled = tag.isNotBlank() && !generating && !summarizing, onClick = { error = null; confirming = true }) { Text("Review") }
             else if (!unknown) TextButton(enabled = !busy, onClick = {
                 busy = true; error = null
                 scope.launch {

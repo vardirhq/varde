@@ -184,7 +184,7 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
                         }
                     }
                     is WorkspacePage.Builds -> item(key = "builds") { BuildsPage(github, repo, response.body, response.cached, page.sha) }
-                    WorkspacePage.Releases -> item(key = "releases") { ReleasesPage(github, repo, response.body, response.cached, onChanged = ::done) }
+                    WorkspacePage.Releases -> item(key = "releases") { ReleasesPage(github, assistant, repo, response.body, response.cached, onChanged = ::done) }
                     is WorkspacePage.Pull -> {
                         val pr = runCatching { parsePullRequest(response.body) }.getOrNull()
                         if (pr == null) item { Notice("Couldn't read this pull request", "The GitHub response could not be displayed.", NoticeKind.Error) }
