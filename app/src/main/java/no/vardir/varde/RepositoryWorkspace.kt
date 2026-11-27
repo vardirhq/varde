@@ -97,7 +97,7 @@ internal fun RepositoryWorkspace(github: GitHubApi, delegations: DelegationTrack
         if (number != null && data != null) {
             val sha = runCatching { JSONObject(data.body).optJSONObject("head")?.optString("sha").orEmpty() }.getOrDefault("")
             GitHubActionDialog(github, assistant, repo, number, kind, sha, page is WorkspacePage.Pull,
-                onDismiss = { writeKind = null; generation++ }, onSuccess = { writeKind = null; done("GitHub accepted the action.") })
+                onDismiss = { writeKind = null; generation++ }, onSuccess = { message -> writeKind = null; done(message) })
         }
     }
     lineComment?.let { target ->
