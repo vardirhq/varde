@@ -2,6 +2,9 @@ package no.vardir.varde
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,8 +17,13 @@ import org.json.JSONObject
 @Composable
 internal fun GitHubActionDialog(
     github: GitHubApi, assistant: OnDeviceAssistant, repo: Repo, number: Int, kind: WriteKind, reviewedSha: String,
-    isPull: Boolean, onDismiss: () -> Unit, onSuccess: () -> Unit
+    isPull: Boolean, onDismiss: () -> Unit, onSuccess: (String) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val mergePrefs = remember { context.getSharedPreferences("merge", android.content.Context.MODE_PRIVATE) }
+    var cleanup by remember { mutableStateOf<BranchCleanup?>(null) }
+    // Remembered across merges; the repository's own auto-delete setting takes precedence when it's on.
+    var deleteBranch by remember { mutableStateOf(mergePrefs.getBoolean("deleteBranch", true)) }
     val scope = rememberCoroutineScope()
     var body by remember { mutableStateOf("") }
     var rewriting by remember { mutableStateOf(false) }
@@ -54,8 +62,15 @@ internal fun GitHubActionDialog(
                 prInfo = "${jsonText(pr, "title")}\n$head → $base\nCommit: ${sha.take(12)}"
                 if (kind == WriteKind.MERGE) {
                     // Offer only the merge methods the repository allows, so GitHub doesn't refuse after confirmation.
-                    runCatching { allowedMergeMethods(JSONObject(github.load(repoApi(repo)).body)) }.getOrNull()
+                    val repoJson = runCatching { JSONObject(github.load(repoApi(repo)).body) }.getOrNull()
+                    repoJson?.let { allowedMergeMethods(it) }
                         ?.takeIf { it.isNotEmpty() }?.let { allowed -> mergeMethods = allowed; if (mergeMethod !in allowed) mergeMethod = allowed.first() }
+                    // Other open pull requests built on this branch would be closed by deleting it.
+                    val dependents = runCatching {
+                        val r = github.load(repoApi(repo) + "/pulls?state=open&per_page=100&base=" + pathPart(head))
+                        if (r.cached) null else org.json.JSONArray(r.body).length()
+                    }.getOrNull()
+                    cleanup = branchCleanup(pr, repoJson, dependents)
                     try {
                         val checkResponse = github.load(repoApi(repo) + "/commits/" + pathPart(sha) + "/check-runs?per_page=100")
                         val statusResponse = github.load(repoApi(repo) + "/commits/" + pathPart(sha) + "/status")
@@ -97,6 +112,21 @@ internal fun GitHubActionDialog(
                             }
                         }
                     } else Text("Method: " + (MergeMethods.firstOrNull { it.first == mergeMethod }?.second ?: mergeMethod))
+                    cleanup?.let { c ->
+                        when {
+                            c.automatic -> Text("GitHub deletes ${c.branch} after merging (repository setting).", style = MaterialTheme.typography.bodySmall)
+                            c.offer && !confirmation -> Row(Modifier.fillMaxWidth().toggleable(deleteBranch, role = Role.Checkbox) {
+                                deleteBranch = it; mergePrefs.edit().putBoolean("deleteBranch", it).apply()
+                            }, verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(deleteBranch, onCheckedChange = null)
+                                Text("Delete ${c.branch} after merging", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                            }
+                            c.offer -> Text(if (deleteBranch) "Then deletes ${c.branch}. It can be restored from the pull request on GitHub." else "Keeps ${c.branch}.",
+                                style = MaterialTheme.typography.bodySmall)
+                            c.reason != null -> Text("${c.branch} is kept: ${c.reason}", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 } else if (!confirmation) {
                     OutlinedTextField(body, { body = it; beforeRewrite = null; rewriteNote = null }, Modifier.fillMaxWidth(),
                         label = { Text(if (kind == WriteKind.APPROVE) "Comment (optional)" else "Comment") }, minLines = 3)
@@ -125,7 +155,14 @@ internal fun GitHubActionDialog(
                 scope.launch {
                     try {
                         github.submitWrite(repo, WriteAction(kind, number, body, reviewedSha, mergeMethod))
-                        onSuccess()
+                        val c = cleanup
+                        onSuccess(if (kind == WriteKind.MERGE && c != null && c.offer && deleteBranch) {
+                            // The merge is done; a failed deletion is reported, never undone or retried silently.
+                            try { github.send("DELETE", deleteBranchPath(repo, c.branch), "Deleting the branch"); "Merged, and deleted ${c.branch}." }
+                            catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { "Merged. The branch ${c.branch} wasn't deleted: ${e.message ?: "GitHub refused."}" }
+                        } else if (kind == WriteKind.MERGE) "Merged." + (c?.automatic?.takeIf { it }?.let { " GitHub deletes ${c.branch} automatically." } ?: "")
+                        else "GitHub accepted the action.")
                     } catch (e: CancellationException) { throw e }
                     catch (e: WriteOutcomeUnknown) { outcomeUnknown = true; error = e.message }
                     catch (e: Exception) { error = e.message ?: "Action failed." }
@@ -147,3 +184,31 @@ private val MergeMethods = listOf("merge" to "Merge commit", "squash" to "Squash
 internal fun allowedMergeMethods(repo: JSONObject): List<String> = listOf(
     "merge" to "allow_merge_commit", "squash" to "allow_squash_merge", "rebase" to "allow_rebase_merge",
 ).filter { (_, field) -> repo.has(field) && repo.optBoolean(field) }.map { it.first }
+
+/**
+ * Whether the merged branch can be deleted from here. [automatic] when the repository deletes merged branches itself.
+ * Not offered for a fork's branch, the default branch, or a branch other open pull requests target (they'd be closed).
+ */
+internal data class BranchCleanup(val branch: String, val offer: Boolean, val automatic: Boolean, val reason: String?)
+
+internal fun branchCleanup(pr: JSONObject, repo: JSONObject?, dependents: Int?): BranchCleanup {
+    val head = pr.optJSONObject("head")
+    val branch = head?.let { jsonText(it, "ref") }.orEmpty()
+    val headRepo = head?.optJSONObject("repo")?.let { jsonText(it, "full_name") }
+    val baseRepo = pr.optJSONObject("base")?.optJSONObject("repo")?.let { jsonText(it, "full_name") }
+    val automatic = repo?.optBoolean("delete_branch_on_merge") == true
+    fun keep(reason: String) = BranchCleanup(branch, offer = false, automatic = false, reason = reason)
+    return when {
+        branch.isBlank() -> keep("its name is unknown.")
+        headRepo == null || !headRepo.equals(baseRepo, ignoreCase = true) -> keep("it's in a fork, not in this repository.")
+        repo != null && branch == jsonText(repo, "default_branch") -> keep("it's the default branch.")
+        dependents == null -> keep("Varde couldn't check whether other pull requests are built on it.")
+        dependents > 0 -> keep("$dependents open pull request${if (dependents == 1) " targets" else "s target"} it and would be closed.")
+        automatic -> BranchCleanup(branch, offer = false, automatic = true, reason = null)
+        else -> BranchCleanup(branch, offer = true, automatic = false, reason = null)
+    }
+}
+
+/** The ref to delete for a branch; slashes in branch names stay path separators. */
+internal fun deleteBranchPath(repo: Repo, branch: String): String =
+    repoApi(repo) + "/git/refs/heads/" + branch.split('/').joinToString("/") { pathPart(it) }
